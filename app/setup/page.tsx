@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import MicButton from "@/components/MicButton";
 
 const QUESTIONS = [
   {
@@ -85,6 +86,16 @@ export default function SetupPage() {
   const answer = answers[q.key] || "";
   const allAnswered = QUESTIONS.every((q) => (answers[q.key] || "").trim().length > 0);
 
+  const appendTranscript = useCallback(
+    (text: string) => {
+      setAnswers((prev) => {
+        const existing = prev[q.key] || "";
+        return { ...prev, [q.key]: existing ? `${existing} ${text}` : text };
+      });
+    },
+    [q.key]
+  );
+
   async function handleSave() {
     setSaving(true);
     await fetch("/api/profile", {
@@ -120,9 +131,12 @@ export default function SetupPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-stone-200 p-8 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-stone-900 mb-1">{q.label}</h2>
-          <p className="text-stone-400 text-sm">{q.hint}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-stone-900 mb-1">{q.label}</h2>
+            <p className="text-stone-400 text-sm">{q.hint}</p>
+          </div>
+          <MicButton key={q.key} onTranscript={appendTranscript} />
         </div>
         <textarea
           value={answer}
