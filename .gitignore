@@ -167,3 +167,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Node / Next.js
+node_modules/
+.next/
+data/
+.env.local
