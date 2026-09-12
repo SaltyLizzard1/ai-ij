@@ -148,7 +148,7 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
     if args.stdin:
         text = sys.stdin.read()
     options = RunOptions(
-        url=args.url, path=args.file, text=text, title=args.title, source_format=args.format,
+        slug=args.slug, url=args.url, path=args.file, text=text, title=args.title, source_format=args.format,
         target_month=_parse_month(args.month), max_posts=args.max_posts,
         platforms=args.platforms.split(",") if args.platforms else None,
         auto_tag=not args.no_auto_tag, tag_limit=args.tag_limit, output_path=args.out,
@@ -200,6 +200,16 @@ def cmd_serve(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_leaplog(args: argparse.Namespace, settings: Settings) -> int:
+    with Storage(settings.db_path) as st:
+        counts = st.article_counts_by_url()
+        for a in settings.leaplog_client().list_articles():
+            c = counts.get(a.url) or {}
+            flag = "pinned " if a.pinned else "       "
+            print(f"{flag}{a.published_date or '          '}  {a.slug:<48} posts={c.get('posts') or 0} approved={c.get('approved') or 0}  [{a.source}]")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace, settings: Settings) -> int:
     with Storage(settings.db_path) as st:
         print(json.dumps({"db": str(st.db_path), "image_root": settings.image_root, "provider": settings.llm_provider,
@@ -235,6 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("run", help="generate posts for one article")
     src = r.add_mutually_exclusive_group(required=True)
+    src.add_argument("--slug", help="Leap Log post slug on SITE_BASE_URL, e.g. how-to-move-to-thailand-in-60-days")
     src.add_argument("--url", help="article URL")
     src.add_argument("--file", help="local .md/.html file")
     src.add_argument("--stdin", action="store_true", help="read the article from stdin")
@@ -254,6 +265,8 @@ def build_parser() -> argparse.ArgumentParser:
     l.add_argument("--status", choices=["draft", "approved", "scheduled", "published", "rejected"])
     l.add_argument("--json", action="store_true")
     l.set_defaults(func=cmd_posts)
+
+    sub.add_parser("leaplog", help="list the Leap Log posts in site order with what has been generated").set_defaults(func=cmd_leaplog)
 
     sv = sub.add_parser("serve", help="start the local API + review UI")
     sv.add_argument("--host", default="127.0.0.1")

@@ -128,3 +128,11 @@ def test_pipeline_without_tagger_uses_fallback_images(settings, storage):
     assert result.status == "succeeded"
     assert all(p.match.is_fallback for p in result.packages)
     assert result.images_tagged == 0
+
+
+def test_pipeline_reuses_photos_when_chunks_outnumber_them(settings, storage):
+    pipe = SocialPipeline(settings, storage, MockCaptionProvider(), tagger=MockVisionTagger(), sleep=lambda s: None)
+    result = pipe.run(RunOptions(path=str(SAMPLE_ARTICLE), target_month=9, max_posts=6, write_output=False))
+    assert result.status == "succeeded", result.errors
+    assert len(result.packages) == 6 > 4  # only 4 photos in the fixture library
+    assert any("reused within this run" in r for p in result.packages for r in p.match.reasons)

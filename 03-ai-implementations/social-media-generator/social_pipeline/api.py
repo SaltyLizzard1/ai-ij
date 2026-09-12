@@ -46,6 +46,7 @@ class VariantUpdate(BaseModel):
 
 
 class RunRequest(BaseModel):
+    slug: str | None = None
     url: str | None = None
     text: str | None = None
     path: str | None = None
@@ -138,6 +139,27 @@ def create_app(settings: Settings, *, jobs: JobRunner | None = None) -> FastAPI:
     @app.get("/api/articles")
     def articles(st: Storage = Depends(storage)) -> list[dict[str, Any]]:
         return st.list_articles()
+
+    @app.get("/api/leaplog")
+    def leaplog(st: Storage = Depends(storage)) -> dict[str, Any]:
+        """The Leap Log as the site lists it, with what has been generated for each post."""
+        client = settings.leaplog_client()
+        try:
+            articles = client.list_articles()
+        except PipelineError as exc:
+            raise HTTPException(502, f"Could not load the Leap Log: {exc}") from exc
+        counts = st.article_counts_by_url()
+        out = []
+        for a in articles:
+            c = counts.get(a.url) or {}
+            d = a.to_dict()
+            d.update({
+                "article_id": c.get("id"), "posts": c.get("posts") or 0, "approved": c.get("approved") or 0,
+                "drafts": c.get("drafts") or 0, "last_generated_at": c.get("last_generated_at"),
+            })
+            out.append(d)
+        next_up = next((a["slug"] for a in out if not a["posts"]), None)
+        return {"site": settings.site_base_url, "next_up": next_up, "articles": out}
 
     # ------------------------------------------------------------- posts
     @app.get("/api/posts")
@@ -296,8 +318,8 @@ def create_app(settings: Settings, *, jobs: JobRunner | None = None) -> FastAPI:
 
     @app.post("/api/runs", status_code=202)
     def run_article(body: RunRequest) -> JSONResponse:
-        if sum(1 for x in (body.url, body.text, body.path) if x) != 1:
-            raise HTTPException(400, "provide exactly one of url, text or path")
+        if sum(1 for x in (body.slug, body.url, body.text, body.path) if x) != 1:
+            raise HTTPException(400, "provide exactly one of slug, url, text or path")
         if body.platforms:
             bad = [p for p in body.platforms if p not in PLATFORMS]
             if bad:
@@ -307,7 +329,7 @@ def create_app(settings: Settings, *, jobs: JobRunner | None = None) -> FastAPI:
             with Storage(settings.db_path) as st:
                 pipe = make_pipeline(st, dry_run=body.dry_run)
                 result = pipe.run(RunOptions(
-                    url=body.url, text=body.text, path=body.path, title=body.title, target_month=body.month,
+                    slug=body.slug, url=body.url, text=body.text, path=body.path, title=body.title, target_month=body.month,
                     max_posts=body.max_posts, platforms=body.platforms, auto_tag=body.auto_tag, tag_limit=body.tag_limit,
                 ))
                 return {
