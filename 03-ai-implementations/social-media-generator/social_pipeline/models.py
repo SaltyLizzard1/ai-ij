@@ -8,7 +8,50 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from typing import Any
 
-SUPPORTED_PLATFORMS = ("linkedin", "x", "instagram")
+SUPPORTED_PLATFORMS = ("linkedin", "x", "instagram", "facebook")
+
+# Controlled vocabulary used on BOTH sides of the match: the chunk analyser
+# maps article text onto these themes with a lexicon, and the vision tagger
+# is constrained (via JSON schema enum) to the same list. Matching on a
+# shared vocabulary is far more robust than free-text keyword overlap alone.
+THEMES = (
+    "city_streets",
+    "nature_landscape",
+    "mountains",
+    "beach_water",
+    "food_drink",
+    "cafe_coworking",
+    "home_daily_life",
+    "transport_road",
+    "people_community",
+    "solo_moment",
+    "work_laptop",
+    "planning_paperwork",
+    "markets_shopping",
+    "temples_culture",
+    "animals",
+    "night_lights",
+    "weather_seasons",
+    "travel_moving",
+    "health_wellbeing",
+    "celebration",
+)
+
+MOODS = (
+    "calm",
+    "energetic",
+    "inspiring",
+    "adventurous",
+    "reflective",
+    "playful",
+    "professional",
+    "cozy",
+    "melancholic",
+    "celebratory",
+)
+
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".insv", ".lrv"}
 
 
 def stable_id(*parts: str) -> str:
@@ -20,8 +63,8 @@ def stable_id(*parts: str) -> str:
 def normalize_term(term: str) -> str:
     """Lower-case, strip punctuation and do very light singularisation.
 
-    This keeps "Mountains" / "mountain" / "mountain," comparable without a
-    stemming dependency. It is intentionally conservative.
+    Keeps "Mountains" / "mountain" / "mountain," comparable without a
+    stemming dependency. Intentionally conservative.
     """
     t = re.sub(r"[^a-z0-9\s-]", "", term.lower()).strip()
     t = re.sub(r"\s+", " ", t)
@@ -74,6 +117,7 @@ class Chunk:
     text: str
     context: str | None = None  # surrounding paragraph for hooks/quotes
     keywords: list[str] = field(default_factory=list)
+    themes: list[str] = field(default_factory=list)
     moods: list[str] = field(default_factory=list)
     post_score: float = 0.0
     id: str | None = None
@@ -92,6 +136,7 @@ class Chunk:
             "text": self.text,
             "context": self.context,
             "keywords": list(self.keywords),
+            "themes": list(self.themes),
             "moods": list(self.moods),
             "post_score": round(self.post_score, 3),
             "char_count": self.char_count,
@@ -99,40 +144,96 @@ class Chunk:
 
 
 @dataclass
+class ImageTags:
+    """What the vision model says the photo shows. Absent until tagged."""
+
+    subject: str
+    description: str
+    keywords: list[str]
+    themes: list[str]
+    moods: list[str]
+    alt_text: str
+    people_present: bool = False
+    text_present: bool = False
+    suitable_for_social: bool = True
+    tagged_at: str | None = None
+    tag_model: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ImageTags":
+        return cls(
+            subject=str(data.get("subject", "")),
+            description=str(data.get("description", "")),
+            keywords=[str(k) for k in data.get("keywords", [])],
+            themes=[t for t in data.get("themes", []) if t in THEMES],
+            moods=[m for m in data.get("moods", []) if m in MOODS],
+            alt_text=str(data.get("alt_text", "")),
+            people_present=bool(data.get("people_present", False)),
+            text_present=bool(data.get("text_present", False)),
+            suitable_for_social=bool(data.get("suitable_for_social", True)),
+            tagged_at=data.get("tagged_at"),
+            tag_model=data.get("tag_model"),
+        )
+
+
+@dataclass
 class ImageAsset:
     id: str
-    path: str  # relative to the library root (portable across machines)
+    path: str  # relative to the library root, forward slashes
     file_name: str
-    month: int  # 1-12
+    month: int  # 1-12, from the YYYY-MM folder
     year: int | None = None
-    subject: str | None = None
-    mood: str | None = None
-    description: str | None = None
-    keywords: list[str] = field(default_factory=list)
+    width: int | None = None
+    height: int | None = None
+    blur: float | None = None  # higher = blurrier (from blur2.csv)
+    contrast: float | None = None
+    brightness: float | None = None  # p99 column in blur2.csv
+    quality_source: str = "none"  # "records" | "none"
+    tags: ImageTags | None = None
     used_count: int = 0
     last_used_at: str | None = None
 
+    @property
+    def is_tagged(self) -> bool:
+        return self.tags is not None
+
+    @property
+    def orientation(self) -> str | None:
+        if not self.width or not self.height:
+            return None
+        if self.width > self.height * 1.1:
+            return "landscape"
+        if self.height > self.width * 1.1:
+            return "portrait"
+        return "square"
+
     def search_terms(self) -> dict[str, str]:
-        """Normalised term -> attribute name it came from."""
+        """Normalised term -> attribute name it came from (tagged images only)."""
         terms: dict[str, str] = {}
-        for kw in self.keywords:
+        if not self.tags:
+            return terms
+        for kw in self.tags.keywords:
             n = normalize_term(kw)
             if n:
                 terms.setdefault(n, "keyword")
                 for part in n.split():
                     terms.setdefault(part, "keyword")
-        if self.subject:
-            n = normalize_term(self.subject)
+        if self.tags.subject:
+            n = normalize_term(self.tags.subject)
             terms[n] = "subject"
             for part in n.split():
                 terms.setdefault(part, "subject")
-        if self.description:
-            for part in re.findall(r"[a-zA-Z][a-zA-Z-]{2,}", self.description):
-                terms.setdefault(normalize_term(part), "description")
+        for part in re.findall(r"[a-zA-Z][a-zA-Z-]{2,}", self.tags.description or ""):
+            terms.setdefault(normalize_term(part), "description")
         return terms
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["orientation"] = self.orientation
+        return d
 
 
 @dataclass
@@ -143,15 +244,19 @@ class ImageMatch:
     is_fallback: bool = False
 
     def to_dict(self) -> dict[str, Any]:
+        img = self.image
         return {
-            "image_id": self.image.id,
-            "path": self.image.path,
-            "month": self.image.month,
-            "year": self.image.year,
-            "subject": self.image.subject,
-            "mood": self.image.mood,
-            "keywords": list(self.image.keywords),
-            "description": self.image.description,
+            "image_id": img.id,
+            "path": img.path,
+            "month": img.month,
+            "year": img.year,
+            "orientation": img.orientation,
+            "blur": img.blur,
+            "subject": img.tags.subject if img.tags else None,
+            "mood": list(img.tags.moods) if img.tags else [],
+            "themes": list(img.tags.themes) if img.tags else [],
+            "keywords": list(img.tags.keywords) if img.tags else [],
+            "description": img.tags.description if img.tags else None,
             "match_score": round(self.score, 3),
             "match_reasons": list(self.reasons),
             "is_fallback": self.is_fallback,
@@ -164,6 +269,7 @@ class PlatformPost:
     body: str
     hashtags: list[str]
     suggested_post_at: str | None = None  # ISO-8601 with timezone
+    alternate_hooks: list[str] = field(default_factory=list)
 
     @property
     def full_text(self) -> str:
@@ -176,6 +282,10 @@ class PlatformPost:
     def char_count(self) -> int:
         return len(self.full_text)
 
+    @property
+    def word_count(self) -> int:
+        return len(self.body.split())
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "platform": self.platform,
@@ -183,7 +293,9 @@ class PlatformPost:
             "hashtags": list(self.hashtags),
             "full_text": self.full_text,
             "char_count": self.char_count,
+            "word_count": self.word_count,
             "suggested_post_at": self.suggested_post_at,
+            "alternate_hooks": list(self.alternate_hooks),
         }
 
 
