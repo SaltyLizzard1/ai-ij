@@ -2,6 +2,7 @@ anthropic>=1.0
 beautifulsoup4>=4.12
 Markdown>=3.5
 Pillow>=10.0
+tzdata>=2024.1   # timezone database; required on Windows
 # optional
 # openai>=1.40        # LLM_PROVIDER=openai (captions only; vision tagging is Anthropic-only)
 # pillow-heif>=0.16   # iPhone .heic photos
