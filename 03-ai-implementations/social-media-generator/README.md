@@ -51,7 +51,8 @@ swapped: a different chunker, a different tagger, a different LLM provider, a di
 | `scheduler.py` | Posting window from the image's month, even spread across weekdays, per-platform hour in your timezone | `ValueError` on a bad timezone |
 | `storage.py` + `schema.sql` | SQLite repository; idempotent upserts | `StorageError` |
 | `pipeline.py` | Orchestrates a run; one chunk failing never stops the others | Run status `succeeded` / `partial` / `failed` |
-| `cli.py` | `init-db`, `status`, `scan`, `score`, `tag`, `run`, `posts`, `set-status` | Exit code 0 / 2 (partial) / 1 |
+| `cli.py` | `init-db`, `status`, `scan`, `score`, `tag`, `run`, `posts`, `set-status`, `serve` |
+| `api.py` + `jobs.py` + `ui/index.html` | Local FastAPI service and the review page; long operations run as background jobs | Job errors surface in the UI; validation errors return 400 | Exit code 0 / 2 (partial) / 1 |
 
 ### How matching works with unlabelled photos
 
@@ -140,6 +141,38 @@ social-pipeline scan --months (Get-Date -Format 'yyyy-MM') | Out-Null
 social-pipeline run --url $args[0] --out ("output\" + (Get-Date -Format 'yyyyMMdd-HHmm') + ".json")
 ```
 
+## Review UI and API
+
+```powershell
+social-pipeline serve            # http://127.0.0.1:8765/  (API docs at /api/docs)
+```
+
+The page runs on your PC so it can show the photos straight from `X:\`. For each post you see the
+photo, its tags and match reasons, the source excerpt, and one tab per platform with an editable
+caption, hashtags, live character/word counts against the platform limit, and the four unused hooks
+(click one to swap it in as the first line). Buttons: **Save edits**, **Approve**, **Reject**,
+**Back to draft**; the date picker moves the post (all platform times follow). The library panel has
+**Scan**, **Score new photos** and **Tag photos**; **Run an article** takes a URL or pasted text, with a
+dry-run switch. **Export approved JSON** downloads approved posts with absolute image paths for a
+publisher (Buffer, Publer, n8n, your own script).
+
+Endpoints (all JSON; long operations return `202` with a job you poll):
+
+| Method & path | What it does |
+|---|---|
+| `GET /api/status` | Config, library counts, post counts by status, current job |
+| `GET /api/posts?status=&article=` · `GET /api/posts/{id}` | Posts with photo, chunk, tags and per-platform variants |
+| `PATCH /api/posts/{id}` | `{status, suggested_post_date, notes, image_alt_text}` |
+| `PUT /api/posts/{id}/variants/{platform}` | `{body, hashtags}`; rejects text over the platform limit |
+| `GET /api/export?status=approved` | Publishing-ready shape: text per platform, absolute image path, times |
+| `GET /api/images/{id}/thumb?w=640` · `GET /api/images/{id}/file` | Cached thumbnail / original |
+| `POST /api/library/scan` · `/score` · `/tag` | Background jobs (`{months}` / `{month, limit}`) |
+| `POST /api/runs` | `{url \| text \| path, title, month, max_posts, platforms, auto_tag, dry_run}` |
+| `GET /api/jobs/{id}` · `GET /api/jobs` | Job status, result and captured log lines |
+
+One job runs at a time (a second request gets `409`). The server binds to `127.0.0.1` and has no
+authentication; keep it that way unless you put it behind something that does.
+
 ## Output JSON
 
 One file per run under `OUTPUT_DIR` (or `--out`). Trimmed example:
@@ -190,8 +223,8 @@ One file per run under `OUTPUT_DIR` (or `--out`). Trimmed example:
 | `images` | Every photo: technical attributes from the folder + `blur2.csv`, semantic tags from the vision model (NULL until tagged) | `path`, `month`, `year`, `width`, `height`, `blur`, `contrast`, `brightness`, `subject`, `themes_json`, `moods_json`, `keywords_json`, `alt_text`, `suitable_for_social`, `tagged_at`, `used_count`, `missing` |
 | `image_tags` | Normalised tags for plain SQL search (`SELECT … WHERE tag = 'scooter'`) | `image_id`, `tag`, `tag_type` |
 | `pipeline_runs` | Audit + cost per run | `status`, `provider`, `model`, `stats_json` |
-| `generated_posts` | One chunk × one image × one date, with a workflow `status` | `chunk_id`, `image_id`, `match_score`, `suggested_post_date`, `status` (draft → approved → scheduled → published / rejected) |
-| `post_variants` | The per-platform text | `platform`, `body`, `hashtags_json`, `alternate_hooks_json`, `char_count`, `suggested_post_at`, `published_url` |
+| `generated_posts` | One chunk × one image × one date, with a workflow `status` | `chunk_id`, `image_id`, `match_score`, `suggested_post_date`, `status` (draft → approved → scheduled → published / rejected), `reviewed_at`, `notes` |
+| `post_variants` | The per-platform text | `platform`, `body`, `hashtags_json`, `alternate_hooks_json`, `char_count`, `suggested_post_at`, `edited_at`, `published_url` |
 
 Useful queries:
 
@@ -249,6 +282,6 @@ picking dates. Things Claude should not be the tool for, with what to use instea
 python -m pytest -q
 ```
 
-37 tests cover chunking, quality scoring (HTML and Markdown), keyword/theme extraction, quality-record joins,
+41 tests cover chunking, quality scoring, the HTTP API and review flow (HTML and Markdown), keyword/theme extraction, quality-record joins,
 candidate selection, matching, caption validation and auto-fix, retries, scheduling, storage, and the
 full pipeline with mock providers. No network access is needed.
