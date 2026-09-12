@@ -13,7 +13,7 @@ from .articles import load_article
 from .captions import CaptionGenerator, CaptionRules
 from .chunker import chunk_article, select_chunks
 from .config import Settings
-from .errors import PipelineError
+from .errors import NoImageMatchError, PipelineError
 from .keywords import analyse_chunk_text
 from .library.matcher import ImageMatcher
 from .library.scanner import LibraryScanner
@@ -32,6 +32,7 @@ class RunOptions:
     url: str | None = None
     path: str | None = None
     text: str | None = None
+    slug: str | None = None  # a Leap Log post slug on the configured site
     title: str | None = None
     source_format: str | None = None
     target_month: int | None = None  # defaults to the current month
@@ -167,15 +168,20 @@ class SocialPipeline:
     def run(self, options: RunOptions) -> PipelineResult:
         s = self.settings
         started = datetime.now(timezone.utc)
-        run_id = stable_id("run", started.isoformat(), options.url or options.path or (options.text or "")[:100])
+        run_id = stable_id("run", started.isoformat(), options.slug or options.url or options.path or (options.text or "")[:100])
         platforms = list(options.platforms or s.platforms)
         max_posts = options.max_posts or s.max_posts_per_article
         target_month = options.target_month or datetime.now().month
 
         # 1. Article
-        article = load_article(
-            url=options.url, path=options.path, text=options.text, title=options.title, source_format=options.source_format
-        )
+        if options.slug:
+            article = self.settings.leaplog_client().fetch_article(options.slug)
+            if options.title:
+                article.title = options.title
+        else:
+            article = load_article(
+                url=options.url, path=options.path, text=options.text, title=options.title, source_format=options.source_format
+            )
         self.storage.upsert_article(article)
         self.storage.start_run(run_id, article.id, self.provider.name, self.provider.model_name)
 
@@ -221,7 +227,14 @@ class SocialPipeline:
             used_in_run: set[str] = set()
             for position, chunk in enumerate(selected):
                 try:
-                    match = self.matcher.best(chunk, images, target_month=target_month, exclude_ids=used_in_run)
+                    try:
+                        match = self.matcher.best(chunk, images, target_month=target_month, exclude_ids=used_in_run)
+                    except NoImageMatchError:
+                        if not used_in_run:
+                            raise
+                        # More chunks than photos: allow a repeat rather than dropping the post.
+                        match = self.matcher.best(chunk, images, target_month=target_month, exclude_ids=None)
+                        match.reasons.append("photo reused within this run")
                     captions = generator.generate(article.title, chunk, match)
                     post_date = suggest_post_date(match.image.month, position, len(selected), self.schedule)
                     for p, post in captions.posts.items():

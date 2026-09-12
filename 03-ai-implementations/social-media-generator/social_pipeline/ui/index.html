@@ -62,6 +62,13 @@
   .hooks button { display: block; text-align: left; width: 100%; margin-bottom: 4px; border-style: dashed; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
   .actions .dirty { color: var(--warn); font-size: 12px; }
+  .ll { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .ll .item { display: grid; grid-template-columns: 26px 110px 1fr auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .ll .item.next { border-color: var(--accent); background: #f3f8f6; }
+  .ll .item.done { opacity: .75; }
+  .ll .t { font-weight: 600; }
+  .ll .sub { font-size: 12px; }
+  .ll .pin { font-size: 11px; color: var(--accent); }
   .empty { text-align: center; color: var(--muted); padding: 40px; }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: 1; }
@@ -78,6 +85,19 @@
 </header>
 
 <main>
+  <div class="panel" id="leaplogPanel">
+    <div class="row" style="margin-bottom:8px">
+      <h2 style="margin:0">The Leap Log</h2>
+      <span class="sub" id="leaplogSite"></span>
+      <span class="spacer"></span>
+      <label class="sub">Month <input id="llMonth" type="number" min="1" max="12" style="width:64px"></label>
+      <label class="sub">Max posts <input id="llMax" type="number" min="1" max="20" value="6" style="width:64px"></label>
+      <label class="sub"><input id="llDry" type="checkbox"> dry run</label>
+      <button id="btnLeaplogRefresh">Refresh</button>
+    </div>
+    <div id="leaplog" class="sub">loading the Leap Log…</div>
+  </div>
+
   <div class="panel" id="runPanel" hidden>
     <h2>Generate posts from an article</h2>
     <div class="row" style="margin-bottom:8px">
@@ -145,7 +165,7 @@
       `<span><b>${img.total}</b> photos</span><span><b>${img.tagged}</b> tagged</span><span><b>${img.scored}</b> scored</span>` +
       `<span><b>${p.draft || 0}</b> drafts</span><span><b>${p.approved || 0}</b> approved</span>` +
       `<span>${esc(s.provider)} · ${esc(s.model)}</span>`;
-    if (!$('runMonth').value) { $('runMonth').value = new Date().getMonth() + 1; $('tagMonth').value = new Date().getMonth() + 1; }
+    if (!$('runMonth').value) { const m = new Date().getMonth() + 1; $('runMonth').value = m; $('tagMonth').value = m; $('llMonth').value = m; }
     if (!$('runPlatforms').childElementCount) {
       $('runPlatforms').innerHTML = Object.keys(state.platforms).map((k) =>
         `<label><input type="checkbox" name="pf" value="${k}" ${s.platforms.includes(k) ? 'checked' : ''}> ${esc(state.platforms[k].display_name)}</label>`).join('');
@@ -330,11 +350,46 @@
         clearInterval(state.pollTimer);
         toast(`${job.kind} ${job.status}`);
         await Promise.all([loadStatus(), loadArticles(), loadPosts()]);
+        if (job.kind === 'run') loadLeaplog();
       }
     };
     poll();
     state.pollTimer = setInterval(poll, 2000);
   }
+
+  // ----------------------------------------------------------------- leap log
+  async function loadLeaplog() {
+    const box = $('leaplog');
+    try {
+      const data = await api('/api/leaplog');
+      $('leaplogSite').textContent = data.site.replace(/^https?:\/\//, '') + '/#the-leap-log';
+      if (!data.articles.length) { box.textContent = 'No posts found on the site.'; return; }
+      box.className = 'll';
+      box.innerHTML = data.articles.map((a, i) => `
+        <div class="item ${a.slug === data.next_up ? 'next' : ''} ${a.posts ? 'done' : ''}" data-slug="${esc(a.slug)}">
+          <span class="sub">${i + 1}.</span>
+          <span class="sub">${esc(a.published_date || '')}</span>
+          <span><span class="t">${esc(a.title)}</span> ${a.pinned ? '<span class="pin">pinned</span>' : ''}<br>
+            <span class="sub">${esc(a.post_type)} · ${esc(a.source)} · ${a.posts ? `${a.posts} posts, ${a.approved} approved, ${a.drafts} drafts` : 'nothing generated yet'}
+            ${a.slug === data.next_up ? ' · <b>next up</b>' : ''}</span></span>
+          <a class="sub" href="${esc(a.url)}" target="_blank">open ↗</a>
+          <span class="row">
+            ${a.posts ? `<button data-view="${esc(a.article_id)}">Review</button>` : ''}
+            <button class="${a.posts ? '' : 'primary'}" data-gen="${esc(a.slug)}">${a.posts ? 'Regenerate' : 'Generate posts'}</button>
+          </span>
+        </div>`).join('');
+      box.querySelectorAll('[data-gen]').forEach((b) => b.onclick = () => {
+        const dry = $('llDry').checked;
+        if (!dry && !confirm(`Generate posts for "${b.dataset.gen}"? This tags photos and writes captions with the API.`)) return;
+        startJob('/api/runs', { slug: b.dataset.gen, month: Number($('llMonth').value) || null, max_posts: Number($('llMax').value) || null, dry_run: dry });
+      });
+      box.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => {
+        state.article = b.dataset.view; $('articleFilter').value = state.article; state.status = 'draft'; loadPosts(); loadStatus();
+        document.getElementById('posts').scrollIntoView({ behavior: 'smooth' });
+      });
+    } catch (err) { box.className = 'sub'; box.textContent = 'Could not load the Leap Log: ' + err.message; }
+  }
+  $('btnLeaplogRefresh').onclick = loadLeaplog;
 
   $('btnScan').onclick = () => startJob('/api/library/scan');
   $('btnScore').onclick = () => startJob('/api/library/score');
@@ -369,6 +424,7 @@
     try {
       state.platforms = await api('/api/platforms');
       await Promise.all([loadStatus(), loadArticles(), loadPosts()]);
+      loadLeaplog();
     } catch (err) { $('posts').innerHTML = `<div class="empty">Could not reach the API: ${esc(err.message)}</div>`; }
   })();
 })();

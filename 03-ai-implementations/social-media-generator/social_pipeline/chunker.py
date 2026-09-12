@@ -70,6 +70,10 @@ def _to_root(text: str, fmt: str) -> Tag:
         # Only strip containers, never a whole <article>/<main>.
         if tag.name not in ("article", "main", "body", "html"):
             tag.decompose()
+    # Tailwind's `not-prose` marks CTAs, forms and widgets inside a post; keep quotes.
+    for tag in soup.find_all(True, class_="not-prose"):
+        if tag.name not in ("blockquote", "article", "main", "body", "html") and tag.find("blockquote") is None:
+            tag.decompose()
     root = soup.find("article") or soup.find("main") or soup.body or soup
     return root
 

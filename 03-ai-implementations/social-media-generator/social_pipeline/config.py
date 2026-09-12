@@ -127,6 +127,13 @@ class Settings:
 
     platforms: tuple[str, ...] = field(default=("linkedin", "x", "instagram"))
 
+    # ---- Leap Log (quityourlifeandtravel.com) ----
+    site_base_url: str = "https://www.quityourlifeandtravel.com"
+    sanity_project_id: str | None = "zvvdrylu"
+    sanity_dataset: str = "production"
+    leaplog_pinned_slug: str | None = "how-to-move-to-thailand-in-60-days"
+    leaplog_extra_slugs: tuple[str, ...] = ("how-to-move-to-thailand-in-60-days",)
+
     @classmethod
     def from_env(cls, dotenv_path: str | None = ".env") -> "Settings":
         if dotenv_path:
@@ -180,6 +187,13 @@ class Settings:
             weekdays_only=_env_bool("WEEKDAYS_ONLY", True),
             seasonal_scheduling=_env_bool("SEASONAL_SCHEDULING", False),
             platforms=platforms,
+            site_base_url=env.get("SITE_BASE_URL", "https://www.quityourlifeandtravel.com"),
+            sanity_project_id=env.get("SANITY_PROJECT_ID", "zvvdrylu") or None,
+            sanity_dataset=env.get("SANITY_DATASET", "production"),
+            leaplog_pinned_slug=env.get("LEAPLOG_PINNED_SLUG", "how-to-move-to-thailand-in-60-days") or None,
+            leaplog_extra_slugs=tuple(
+                x.strip() for x in env.get("LEAPLOG_EXTRA_SLUGS", "how-to-move-to-thailand-in-60-days").split(",") if x.strip()
+            ),
         )
         settings.validate()
         return settings
@@ -204,6 +218,14 @@ class Settings:
     @property
     def resolved_model(self) -> str:
         return self.llm_model or DEFAULT_MODELS[self.llm_provider]
+
+    def leaplog_client(self, **overrides):  # type: ignore[no-untyped-def]
+        from .sources.leaplog import LeapLogClient
+
+        return LeapLogClient(
+            site_base_url=self.site_base_url, sanity_project_id=self.sanity_project_id, sanity_dataset=self.sanity_dataset,
+            pinned_slug=self.leaplog_pinned_slug, extra_slugs=self.leaplog_extra_slugs, **overrides,
+        )
 
     def brand_voice_text(self) -> str:
         """Brand voice: inline setting plus the optional markdown file."""

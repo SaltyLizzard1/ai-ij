@@ -51,7 +51,8 @@ swapped: a different chunker, a different tagger, a different LLM provider, a di
 | `scheduler.py` | Posting window from the image's month, even spread across weekdays, per-platform hour in your timezone | `ValueError` on a bad timezone |
 | `storage.py` + `schema.sql` | SQLite repository; idempotent upserts | `StorageError` |
 | `pipeline.py` | Orchestrates a run; one chunk failing never stops the others | Run status `succeeded` / `partial` / `failed` |
-| `cli.py` | `init-db`, `status`, `scan`, `score`, `tag`, `run`, `posts`, `set-status`, `serve` |
+| `cli.py` | `init-db`, `status`, `scan`, `score`, `tag`, `run`, `leaplog`, `posts`, `set-status`, `serve` |
+| `sources/leaplog.py` | Leap Log listing in site order, Portable Text → Markdown, page fetch for hardcoded posts | `ArticleLoadError` (site route falls back to the Sanity CDN) |
 | `api.py` + `jobs.py` + `ui/index.html` | Local FastAPI service and the review page; long operations run as background jobs | Job errors surface in the UI; validation errors return 400 | Exit code 0 / 2 (partial) / 1 |
 
 ### How matching works with unlabelled photos
@@ -141,6 +142,25 @@ social-pipeline scan --months (Get-Date -Format 'yyyy-MM') | Out-Null
 social-pipeline run --url $args[0] --out ("output\" + (Get-Date -Format 'yyyyMMdd-HHmm') + ".json")
 ```
 
+## The Leap Log as the article source
+
+The review page opens with **The Leap Log** listed exactly as your site orders it (pinned post first,
+then newest), read from the site's own `/api/posts` route with the Sanity CDN as a fallback, plus the
+hardcoded post from `data/posts.tsx`. Each row shows what has been generated and approved; the first
+row with nothing generated is marked **next up**. Click **Generate posts** on a row (or run it from the
+terminal) and the article is fetched the clean way: Sanity posts come in as Markdown converted from
+Portable Text (no page chrome), the hardcoded post is fetched as HTML with the site's `not-prose`
+widgets (email form, CTAs) stripped.
+
+```powershell
+social-pipeline leaplog                                           # list posts in site order
+social-pipeline run --slug how-to-move-to-thailand-in-60-days     # the pinned first article
+```
+
+Settings: `SITE_BASE_URL`, `SANITY_PROJECT_ID`, `SANITY_DATASET`, `LEAPLOG_PINNED_SLUG`,
+`LEAPLOG_EXTRA_SLUGS` (comma-separated slugs that exist only in `data/posts.tsx`). Re-running a slug
+updates the same article in place because its identity is the canonical `/leap/<slug>` URL.
+
 ## Review UI and API
 
 ```powershell
@@ -161,13 +181,14 @@ Endpoints (all JSON; long operations return `202` with a job you poll):
 | Method & path | What it does |
 |---|---|
 | `GET /api/status` | Config, library counts, post counts by status, current job |
+| `GET /api/leaplog` | Site's post list in site order with generated/approved counts and `next_up` |
 | `GET /api/posts?status=&article=` · `GET /api/posts/{id}` | Posts with photo, chunk, tags and per-platform variants |
 | `PATCH /api/posts/{id}` | `{status, suggested_post_date, notes, image_alt_text}` |
 | `PUT /api/posts/{id}/variants/{platform}` | `{body, hashtags}`; rejects text over the platform limit |
 | `GET /api/export?status=approved` | Publishing-ready shape: text per platform, absolute image path, times |
 | `GET /api/images/{id}/thumb?w=640` · `GET /api/images/{id}/file` | Cached thumbnail / original |
 | `POST /api/library/scan` · `/score` · `/tag` | Background jobs (`{months}` / `{month, limit}`) |
-| `POST /api/runs` | `{url \| text \| path, title, month, max_posts, platforms, auto_tag, dry_run}` |
+| `POST /api/runs` | `{slug \| url \| text \| path, title, month, max_posts, platforms, auto_tag, dry_run}` |
 | `GET /api/jobs/{id}` · `GET /api/jobs` | Job status, result and captured log lines |
 
 One job runs at a time (a second request gets `409`). The server binds to `127.0.0.1` and has no
@@ -282,6 +303,6 @@ picking dates. Things Claude should not be the tool for, with what to use instea
 python -m pytest -q
 ```
 
-41 tests cover chunking, quality scoring, the HTTP API and review flow (HTML and Markdown), keyword/theme extraction, quality-record joins,
+47 tests cover chunking, quality scoring, the Leap Log source, the HTTP API and review flow (HTML and Markdown), keyword/theme extraction, quality-record joins,
 candidate selection, matching, caption validation and auto-fix, retries, scheduling, storage, and the
 full pipeline with mock providers. No network access is needed.

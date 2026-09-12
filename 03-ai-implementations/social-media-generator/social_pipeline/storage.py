@@ -392,6 +392,20 @@ class Storage:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def article_counts_by_url(self) -> dict[str, dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT a.source_url, a.id, a.title,
+                   COUNT(p.id) AS posts,
+                   SUM(CASE WHEN p.status = 'approved' THEN 1 ELSE 0 END) AS approved,
+                   SUM(CASE WHEN p.status = 'draft' THEN 1 ELSE 0 END) AS drafts,
+                   MAX(p.created_at) AS last_generated_at
+            FROM articles a LEFT JOIN generated_posts p ON p.article_id = a.id
+            WHERE a.source_url IS NOT NULL GROUP BY a.id
+            """
+        ).fetchall()
+        return {r["source_url"]: dict(r) for r in rows}
+
     def update_post(
         self,
         post_id: str,
