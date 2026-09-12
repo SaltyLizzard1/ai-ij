@@ -64,6 +64,69 @@ def cmd_scan(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_score(args: argparse.Namespace, settings: Settings) -> int:
+    """Compute blur/contrast scores for photos missing from blur2.csv, then re-scan."""
+    from pathlib import Path
+
+    from .library.quality import append_scores, record_path_for, score_image, unscored_photos
+    from .library.scanner import _record_key, load_quality_records
+
+    if not settings.records_dir:
+        print("error: RECORDS_DIR is not set in .env", file=sys.stderr)
+        return 1
+    root = Path(settings.image_root)
+    csv_path = Path(settings.records_dir) / "blur2.csv"
+    months = set(args.months.split(",")) if args.months else None
+
+    if args.verify:
+        # Re-score a sample of already-scored photos and compare with the CSV.
+        records = load_quality_records(settings.records_dir)
+        candidates = []
+        for folder in sorted(p for p in root.iterdir() if p.is_dir()):
+            if months and folder.name not in months:
+                continue
+            for f in sorted(folder.glob("*.jp*g")):
+                rel = f.relative_to(root).as_posix()
+                if _record_key(rel) in records:
+                    candidates.append((f, rel))
+                if len(candidates) >= args.verify:
+                    break
+            if len(candidates) >= args.verify:
+                break
+        diffs = []
+        for f, rel in candidates:
+            theirs = records[_record_key(rel)]
+            ours = score_image(f, record_path=rel)
+            diffs.append(abs(ours.blur - (theirs.blur or 0)))
+            print(f"{rel}\tcsv blur={theirs.blur:.4f}\tours={ours.blur:.4f}\tcontrast csv={theirs.contrast} ours={ours.contrast}")
+        if diffs:
+            print(f"mean |difference| in blur over {len(diffs)} photo(s): {sum(diffs)/len(diffs):.4f}")
+        return 0
+
+    todo = unscored_photos(root, csv_path, months=months, skip_folders=settings.skip_folders)
+    print(f"{len(todo)} photo(s) without a quality record" + (f" in {', '.join(sorted(months))}" if months else ""))
+    if args.dry_run or not todo:
+        for _, rel in todo:
+            print(f"  would score {rel}")
+        return 0
+    scores, failed = [], 0
+    for f, rel in todo:
+        try:
+            sc = score_image(f, record_path=record_path_for(root, rel))
+            scores.append(sc)
+            print(f"  {rel}\tblur={sc.blur:.3f}\tcontrast={sc.contrast:.1f}\t{sc.width}x{sc.height}")
+        except PipelineError as exc:
+            failed += 1
+            print(f"  FAILED {rel}: {exc}", file=sys.stderr)
+    n = append_scores(csv_path, scores)
+    print(f"Appended {n} row(s) to {csv_path} (backup in blur2.csv.bak); {failed} failed")
+    pipe, storage = _pipeline(settings, dry_run=True)
+    with storage:
+        stats = pipe.scan_library(months=months)
+    print(f"Index refreshed: {stats['total']} photos, {stats['scored']} with scores")
+    return 1 if failed else 0
+
+
 def cmd_tag(args: argparse.Namespace, settings: Settings) -> int:
     month = _parse_month(args.month) or datetime.now().month
     pipe, storage = _pipeline(settings, dry_run=args.dry_run)
@@ -147,6 +210,12 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("scan", help="index photos under IMAGE_ROOT (YYYY-MM folders) with blur scores")
     s.add_argument("--months", help="comma-separated folder names to limit the scan, e.g. 2026-09,2026-08")
     s.set_defaults(func=cmd_scan)
+
+    sc = sub.add_parser("score", help="compute blur/contrast scores for photos missing from blur2.csv, then re-scan")
+    sc.add_argument("--months", help="comma-separated folder names, e.g. 2026-09 (default: all months)")
+    sc.add_argument("--dry-run", action="store_true", help="list the photos that would be scored")
+    sc.add_argument("--verify", type=int, metavar="N", help="re-score N already-scored photos and compare with the CSV")
+    sc.set_defaults(func=cmd_score)
 
     t = sub.add_parser("tag", help="describe untagged photos with the vision model")
     t.add_argument("--month", help="target month (9 or 2026-09); default: current month")
