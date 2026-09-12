@@ -15,13 +15,15 @@ dependencies = [
     "Markdown>=3.5",
     "Pillow>=10.0",
     "numpy>=1.24",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
     "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
 openai = ["openai>=1.40"]
 heic = ["pillow-heif>=0.16"]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
 
 [project.scripts]
 social-pipeline = "social_pipeline.cli:main"
@@ -30,7 +32,7 @@ social-pipeline = "social_pipeline.cli:main"
 include = ["social_pipeline*"]
 
 [tool.setuptools.package-data]
-social_pipeline = ["schema.sql"]
+social_pipeline = ["schema.sql", "ui/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

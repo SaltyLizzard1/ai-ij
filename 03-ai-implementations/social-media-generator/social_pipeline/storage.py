@@ -33,12 +33,28 @@ class Storage:
         try:
             if str(self.db_path) != ":memory:":
                 self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            self.conn = sqlite3.connect(str(self.db_path))
+            # check_same_thread=False: FastAPI may open and close a per-request connection
+            # on different worker threads. Each request/job still gets its own connection.
+            self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
             self.conn.execute("PRAGMA foreign_keys = ON")
             self.conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+            self._migrate()
         except (sqlite3.Error, OSError) as exc:
             raise StorageError(f"Could not open database {db_path}: {exc}") from exc
+
+    def _migrate(self) -> None:
+        """Add columns introduced after the first release to existing databases."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(generated_posts)")}
+        with self.conn:
+            if "reviewed_at" not in cols:
+                self.conn.execute("ALTER TABLE generated_posts ADD COLUMN reviewed_at TEXT")
+            if "notes" not in cols:
+                self.conn.execute("ALTER TABLE generated_posts ADD COLUMN notes TEXT")
+        vcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(post_variants)")}
+        with self.conn:
+            if "edited_at" not in vcols:
+                self.conn.execute("ALTER TABLE post_variants ADD COLUMN edited_at TEXT")
 
     def close(self) -> None:
         self.conn.close()
@@ -288,14 +304,66 @@ class Storage:
         except sqlite3.Error as exc:
             raise StorageError(f"save_package failed: {exc}") from exc
 
+    _POST_SELECT = """
+        SELECT p.*, a.title AS article_title, a.source_url AS article_url,
+               i.path AS image_path, i.month AS image_month, i.year AS image_year, i.width AS image_width,
+               i.height AS image_height, i.blur AS image_blur, i.subject AS image_subject,
+               i.description AS image_description, i.alt_text AS image_alt, i.themes_json AS image_themes,
+               i.moods_json AS image_moods,
+               c.chunk_index, c.kind, c.heading AS chunk_heading, c.body AS chunk_body,
+               c.themes_json AS chunk_themes, c.keywords_json AS chunk_keywords
+        FROM generated_posts p
+        JOIN articles a ON a.id = p.article_id
+        JOIN images i ON i.id = p.image_id
+        JOIN article_chunks c ON c.id = p.chunk_id
+    """
+
+    def _post_row_to_dict(self, r: sqlite3.Row) -> dict[str, Any]:
+        variants = [
+            {
+                "platform": v["platform"],
+                "body": v["body"],
+                "hashtags": _loads(v["hashtags_json"], []),
+                "alternate_hooks": _loads(v["alternate_hooks_json"], []),
+                "char_count": v["char_count"],
+                "suggested_post_at": v["suggested_post_at"],
+                "edited_at": v["edited_at"],
+                "published_url": v["published_url"],
+            }
+            for v in self.conn.execute("SELECT * FROM post_variants WHERE post_id = ? ORDER BY platform", (r["id"],))
+        ]
+        return {
+            "id": r["id"],
+            "run_id": r["run_id"],
+            "status": r["status"],
+            "suggested_post_date": r["suggested_post_date"],
+            "theme": r["theme"],
+            "image_alt_text": r["image_alt_text"],
+            "match_score": r["match_score"],
+            "match_reasons": _loads(r["match_reasons_json"], []),
+            "is_fallback_image": bool(r["is_fallback_image"]),
+            "warnings": _loads(r["warnings_json"], []),
+            "provider": r["provider"],
+            "model": r["model"],
+            "created_at": r["created_at"],
+            "reviewed_at": r["reviewed_at"],
+            "notes": r["notes"],
+            "article": {"id": r["article_id"], "title": r["article_title"], "source_url": r["article_url"]},
+            "chunk": {
+                "id": r["chunk_id"], "index": r["chunk_index"], "kind": r["kind"], "heading": r["chunk_heading"],
+                "text": r["chunk_body"], "themes": _loads(r["chunk_themes"], []), "keywords": _loads(r["chunk_keywords"], []),
+            },
+            "image": {
+                "id": r["image_id"], "path": r["image_path"], "month": r["image_month"], "year": r["image_year"],
+                "width": r["image_width"], "height": r["image_height"], "blur": r["image_blur"],
+                "subject": r["image_subject"], "description": r["image_description"], "alt_text": r["image_alt"],
+                "themes": _loads(r["image_themes"], []), "moods": _loads(r["image_moods"], []),
+            },
+            "variants": variants,
+        }
+
     def list_posts(self, *, article_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
-        sql = """
-            SELECT p.*, i.path AS image_path, c.chunk_index, c.kind
-            FROM generated_posts p
-            JOIN images i ON i.id = p.image_id
-            JOIN article_chunks c ON c.id = p.chunk_id
-            WHERE 1=1
-        """
+        sql = self._POST_SELECT + " WHERE 1=1"
         params: list[Any] = []
         if article_id:
             sql += " AND p.article_id = ?"
@@ -304,18 +372,94 @@ class Storage:
             sql += " AND p.status = ?"
             params.append(status)
         sql += " ORDER BY p.suggested_post_date, c.chunk_index"
-        posts = [dict(r) for r in self.conn.execute(sql, params).fetchall()]
-        for p in posts:
-            p["variants"] = [
-                dict(v) for v in self.conn.execute(
-                    "SELECT platform, body, hashtags_json, char_count, suggested_post_at FROM post_variants WHERE post_id = ? ORDER BY platform",
-                    (p["id"],),
-                ).fetchall()
-            ]
-        return posts
+        try:
+            return [self._post_row_to_dict(r) for r in self.conn.execute(sql, params).fetchall()]
+        except sqlite3.Error as exc:
+            raise StorageError(f"list_posts failed: {exc}") from exc
+
+    def get_post(self, post_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(self._POST_SELECT + " WHERE p.id = ?", (post_id,)).fetchone()
+        return self._post_row_to_dict(row) if row else None
+
+    def list_articles(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT a.id, a.title, a.source_url, a.created_at, a.updated_at,
+                   (SELECT COUNT(*) FROM generated_posts p WHERE p.article_id = a.id) AS posts,
+                   (SELECT COUNT(*) FROM generated_posts p WHERE p.article_id = a.id AND p.status = 'approved') AS approved
+            FROM articles a ORDER BY COALESCE(a.updated_at, a.created_at) DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_post(
+        self,
+        post_id: str,
+        *,
+        status: str | None = None,
+        suggested_post_date: str | None = None,
+        notes: str | None = None,
+        image_alt_text: str | None = None,
+    ) -> dict[str, Any]:
+        sets: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            if status not in ("draft", "approved", "scheduled", "published", "rejected"):
+                raise StorageError(f"Invalid status {status!r}")
+            sets += ["status = ?", "reviewed_at = ?"]
+            params += [status, _now()]
+        if suggested_post_date is not None:
+            sets.append("suggested_post_date = ?")
+            params.append(suggested_post_date)
+        if notes is not None:
+            sets.append("notes = ?")
+            params.append(notes)
+        if image_alt_text is not None:
+            sets.append("image_alt_text = ?")
+            params.append(image_alt_text)
+        if not sets:
+            raise StorageError("Nothing to update")
+        params.append(post_id)
+        try:
+            with self.conn:
+                cur = self.conn.execute(f"UPDATE generated_posts SET {', '.join(sets)} WHERE id = ?", params)
+                if cur.rowcount == 0:
+                    raise StorageError(f"No post with id {post_id}")
+                if suggested_post_date is not None:
+                    # keep per-platform times on the new day
+                    for v in self.conn.execute("SELECT id, suggested_post_at FROM post_variants WHERE post_id = ?", (post_id,)):
+                        old = v["suggested_post_at"] or ""
+                        if len(old) >= 10:
+                            self.conn.execute(
+                                "UPDATE post_variants SET suggested_post_at = ? WHERE id = ?",
+                                (suggested_post_date + old[10:], v["id"]),
+                            )
+        except sqlite3.Error as exc:
+            raise StorageError(f"update_post failed: {exc}") from exc
+        post = self.get_post(post_id)
+        assert post is not None
+        return post
+
+    def update_variant(self, post_id: str, platform: str, *, body: str, hashtags: list[str]) -> dict[str, Any]:
+        tags = [t if t.startswith("#") else "#" + t.lstrip("#") for t in (h.strip() for h in hashtags) if t]
+        full = body.strip() + ("\n\n" + " ".join(tags) if tags else "")
+        try:
+            with self.conn:
+                cur = self.conn.execute(
+                    "UPDATE post_variants SET body = ?, hashtags_json = ?, char_count = ?, edited_at = ? WHERE post_id = ? AND platform = ?",
+                    (body.strip(), json.dumps(tags), len(full), _now(), post_id, platform),
+                )
+                if cur.rowcount == 0:
+                    raise StorageError(f"No {platform} variant for post {post_id}")
+        except sqlite3.Error as exc:
+            raise StorageError(f"update_variant failed: {exc}") from exc
+        post = self.get_post(post_id)
+        assert post is not None
+        return post
+
+    def post_counts(self) -> dict[str, int]:
+        rows = self.conn.execute("SELECT status, COUNT(*) AS n FROM generated_posts GROUP BY status").fetchall()
+        return {r["status"]: r["n"] for r in rows}
 
     def set_post_status(self, post_id: str, status: str) -> None:
-        with self.conn:
-            cur = self.conn.execute("UPDATE generated_posts SET status = ? WHERE id = ?", (status, post_id))
-            if cur.rowcount == 0:
-                raise StorageError(f"No post with id {post_id}")
+        self.update_post(post_id, status=status)

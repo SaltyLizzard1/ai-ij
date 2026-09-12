@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post Review</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1f1f1f; --muted: #6b6b6b; --line: #e3e1dc;
+    --accent: #2f6f5e; --accent-ink: #ffffff; --warn: #a15c00; --bad: #a13a2f; --good: #2f6f5e;
+    --chip: #eef2f0; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  .stats b { color: var(--ink); }
+  .spacer { flex: 1; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+  button:hover { border-color: #bbb; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.danger { color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select, textarea { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: #fff; color: var(--ink); }
+  textarea { width: 100%; min-height: 220px; resize: vertical; line-height: 1.5; }
+  main { max-width: 1240px; margin: 0 auto; padding: 16px 20px 80px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tabs button { border-radius: 999px; padding: 5px 12px; }
+  .tabs button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; }
+  .panel h2 { font-size: 14px; margin: 0 0 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .row label { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+  .job { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; background: #faf9f6; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 160px; overflow: auto; margin-top: 8px; }
+  .card { display: grid; grid-template-columns: 340px 1fr; gap: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .card.approved { border-left: 4px solid var(--good); }
+  .card.rejected { opacity: .7; border-left: 4px solid var(--bad); }
+  .photo img { width: 100%; border-radius: 8px; display: block; background: #ddd; }
+  .photo .meta { color: var(--muted); font-size: 12px; margin-top: 6px; word-break: break-all; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 2px 9px; font-size: 12px; color: #2d4a42; }
+  .chip.warn { background: #fdf1e3; color: var(--warn); }
+  .chip.bad { background: #fbe9e6; color: var(--bad); }
+  .head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .head .title { font-weight: 600; }
+  .head .sub { color: var(--muted); font-size: 13px; }
+  .status { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 4px; background: #eee; }
+  .status.approved { background: #e2f0eb; color: var(--good); } .status.rejected { background: #fbe9e6; color: var(--bad); }
+  details.excerpt { margin: 8px 0; color: var(--muted); }
+  details.excerpt summary { cursor: pointer; }
+  details.excerpt p { white-space: pre-wrap; margin: 6px 0 0; color: var(--ink); }
+  .ptabs { display: flex; gap: 4px; margin: 10px 0 8px; flex-wrap: wrap; }
+  .ptabs button { padding: 5px 11px; }
+  .ptabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .ptabs button .n { opacity: .7; font-size: 12px; margin-left: 4px; }
+  .counter { color: var(--muted); font-size: 12px; text-align: right; margin-top: 4px; }
+  .counter.over { color: var(--bad); font-weight: 600; }
+  .hooks { margin-top: 8px; }
+  .hooks span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .hooks button { display: block; text-align: left; width: 100%; margin-bottom: 4px; border-style: dashed; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .actions .dirty { color: var(--warn); font-size: 12px; }
+  .empty { text-align: center; color: var(--muted); padding: 40px; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 800px) { .card { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Post Review</h1>
+  <div class="stats" id="stats">loading…</div>
+  <div class="spacer"></div>
+  <button id="btnRunPanel">Run an article</button>
+  <button id="btnExport">Export approved JSON</button>
+</header>
+
+<main>
+  <div class="panel" id="runPanel" hidden>
+    <h2>Generate posts from an article</h2>
+    <div class="row" style="margin-bottom:8px">
+      <input id="runUrl" placeholder="Article URL (or paste text below)" style="flex:1;min-width:260px">
+      <label>Month <input id="runMonth" type="number" min="1" max="12" style="width:64px"></label>
+      <label>Max posts <input id="runMax" type="number" min="1" max="20" value="6" style="width:64px"></label>
+      <label><input id="runDry" type="checkbox"> dry run (no API cost)</label>
+    </div>
+    <textarea id="runText" placeholder="…or paste the article here (Markdown or HTML)" style="min-height:90px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <span id="runPlatforms" class="row"></span>
+      <span class="spacer"></span>
+      <button class="primary" id="btnRun">Generate</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <h2 style="margin:0">Photo library</h2>
+      <button id="btnScan" title="Index new photos under IMAGE_ROOT">Scan</button>
+      <button id="btnScore" title="Compute blur scores for photos missing from blur2.csv">Score new photos</button>
+      <label>Tag month <input id="tagMonth" type="number" min="1" max="12" style="width:64px"></label>
+      <label>limit <input id="tagLimit" type="number" min="1" max="500" value="40" style="width:70px"></label>
+      <button id="btnTag" title="Describe untagged photos with the vision model (costs API calls)">Tag photos</button>
+      <span class="spacer"></span>
+      <span id="jobState" class="sub"></span>
+    </div>
+    <div class="job" id="jobLog" hidden></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="tabs" id="statusTabs"></div>
+    <select id="articleFilter"><option value="">All articles</option></select>
+    <span class="spacer"></span>
+    <button id="btnReload">Reload</button>
+  </div>
+
+  <div id="posts"></div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const state = { posts: [], platforms: {}, status: 'draft', article: '', edits: {}, tab: {}, pollTimer: null, jobId: null };
+
+  const api = async (path, opts = {}) => {
+    const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { detail = (await res.json()).detail || detail; } catch (_) {}
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    return res.status === 204 ? null : res.json();
+  };
+  const toast = (msg, ms = 2200) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), ms); };
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fullLen = (body, tags) => body.trim().length + (tags.length ? 2 + tags.join(' ').length : 0);
+
+  // ---------------------------------------------------------------- status
+  async function loadStatus() {
+    const s = await api('/api/status');
+    const img = s.images, p = s.posts || {};
+    $('stats').innerHTML =
+      `<span><b>${img.total}</b> photos</span><span><b>${img.tagged}</b> tagged</span><span><b>${img.scored}</b> scored</span>` +
+      `<span><b>${p.draft || 0}</b> drafts</span><span><b>${p.approved || 0}</b> approved</span>` +
+      `<span>${esc(s.provider)} · ${esc(s.model)}</span>`;
+    if (!$('runMonth').value) { $('runMonth').value = new Date().getMonth() + 1; $('tagMonth').value = new Date().getMonth() + 1; }
+    if (!$('runPlatforms').childElementCount) {
+      $('runPlatforms').innerHTML = Object.keys(state.platforms).map((k) =>
+        `<label><input type="checkbox" name="pf" value="${k}" ${s.platforms.includes(k) ? 'checked' : ''}> ${esc(state.platforms[k].display_name)}</label>`).join('');
+    }
+    if (s.current_job && ['queued', 'running'].includes(s.current_job.status)) watchJob(s.current_job.id);
+    renderTabs(p);
+  }
+
+  function renderTabs(counts) {
+    const order = ['draft', 'approved', 'rejected', 'scheduled', 'published', ''];
+    $('statusTabs').innerHTML = order.map((st) => {
+      const n = st ? (counts[st] || 0) : Object.values(counts).reduce((a, b) => a + b, 0);
+      return `<button data-status="${st}" class="${state.status === st ? 'active' : ''}">${st || 'all'} <span class="n">${n}</span></button>`;
+    }).join('');
+    $('statusTabs').querySelectorAll('button').forEach((b) => b.onclick = () => { state.status = b.dataset.status; loadPosts(); loadStatus(); });
+  }
+
+  async function loadArticles() {
+    const arts = await api('/api/articles');
+    const sel = $('articleFilter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All articles</option>' + arts.map((a) =>
+      `<option value="${a.id}">${esc(a.title)} (${a.approved}/${a.posts} approved)</option>`).join('');
+    sel.value = cur;
+  }
+
+  // ----------------------------------------------------------------- posts
+  async function loadPosts() {
+    const q = new URLSearchParams();
+    if (state.status) q.set('status', state.status);
+    if (state.article) q.set('article', state.article);
+    state.posts = await api('/api/posts?' + q.toString());
+    renderPosts();
+  }
+
+  function currentTab(post) {
+    if (!state.tab[post.id] || !post.variants.some((v) => v.platform === state.tab[post.id])) state.tab[post.id] = post.variants[0]?.platform;
+    return state.tab[post.id];
+  }
+  function edit(post, platform) {
+    const key = post.id + ':' + platform;
+    if (!state.edits[key]) {
+      const v = post.variants.find((x) => x.platform === platform);
+      state.edits[key] = { body: v.body, hashtags: v.hashtags.slice(), dirty: false };
+    }
+    return state.edits[key];
+  }
+
+  function renderPosts() {
+    const root = $('posts');
+    if (!state.posts.length) { root.innerHTML = `<div class="empty">No ${state.status || ''} posts. Run an article to generate some.</div>`; return; }
+    root.innerHTML = state.posts.map(renderCard).join('');
+    state.posts.forEach(bindCard);
+  }
+
+  function renderCard(p) {
+    const platform = currentTab(p);
+    const e = edit(p, platform);
+    const spec = state.platforms[platform] || { max_chars: 9999 };
+    const len = fullLen(e.body, e.hashtags);
+    const v = p.variants.find((x) => x.platform === platform);
+    const chips = [
+      ...(p.match_reasons || []).map((r) => `<span class="chip">${esc(r)}</span>`),
+      p.is_fallback_image ? '<span class="chip warn">fallback photo (untagged)</span>' : '',
+      ...(p.warnings || []).map((w) => `<span class="chip warn">${esc(w)}</span>`),
+    ].join('');
+    return `
+    <article class="card ${p.status}" data-id="${p.id}">
+      <div class="photo">
+        <a href="/api/images/${p.image.id}/file" target="_blank" title="Open full size"><img src="/api/images/${p.image.id}/thumb?w=680" alt="${esc(p.image_alt_text || p.image.alt_text || '')}" loading="lazy"></a>
+        <div class="meta">${esc(p.image.path)}${p.image.blur != null ? ` · blur ${p.image.blur.toFixed(2)}` : ''}</div>
+        <div class="meta">${esc(p.image.subject || 'untagged')}</div>
+        <div class="chips">${(p.image.themes || []).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}${(p.image.moods || []).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+        <label class="meta">Alt text<br><input data-alt style="width:100%" value="${esc(p.image_alt_text || '')}"></label>
+      </div>
+      <div>
+        <div class="head">
+          <span class="status ${p.status}">${p.status}</span>
+          <label class="sub">Post on <input type="date" data-date value="${p.suggested_post_date}"></label>
+          <span class="title">${esc(p.theme || p.chunk.heading || 'Post')}</span>
+          <span class="sub">${esc(p.article.title)} · chunk ${p.chunk.index} (${p.chunk.kind})</span>
+        </div>
+        <div class="chips">${chips}</div>
+        <details class="excerpt"><summary>Source excerpt</summary><p>${esc(p.chunk.text)}</p></details>
+        <div class="ptabs">${p.variants.map((x) => {
+          const ex = edit(p, x.platform); const sp = state.platforms[x.platform] || { max_chars: 9999 };
+          const l = fullLen(ex.body, ex.hashtags);
+          return `<button data-tab="${x.platform}" class="${x.platform === platform ? 'active' : ''}">${esc(sp.display_name || x.platform)}<span class="n ${l > sp.max_chars ? 'over' : ''}">${l}</span>${ex.dirty ? ' •' : ''}</button>`;
+        }).join('')}</div>
+        <textarea data-body>${esc(e.body)}</textarea>
+        <div class="row" style="margin-top:6px">
+          <input data-tags placeholder="hashtags, space separated" style="flex:1" value="${esc(e.hashtags.join(' '))}">
+          <span class="counter ${len > spec.max_chars ? 'over' : ''}">${len} / ${spec.max_chars}${spec.max_words ? ` · ${e.body.trim().split(/\s+/).filter(Boolean).length} words (max ${spec.max_words})` : ''}</span>
+        </div>
+        ${v && v.alternate_hooks?.length ? `<div class="hooks"><span>Swap the first line for one of the unused hooks:</span>${v.alternate_hooks.map((h) => `<button data-hook="${esc(h)}">${esc(h)}</button>`).join('')}</div>` : ''}
+        <div class="actions">
+          <button data-act="save">Save edits</button>
+          <button class="primary" data-act="approve">Approve</button>
+          <button class="danger" data-act="reject">Reject</button>
+          ${p.status !== 'draft' ? '<button data-act="draft">Back to draft</button>' : ''}
+          <span class="dirty" data-dirty ${e.dirty ? '' : 'hidden'}>unsaved edits</span>
+          <span class="spacer"></span>
+          <span class="sub">${v?.suggested_post_at ? esc(v.suggested_post_at.replace('T', ' ').slice(0, 16)) : ''}</span>
+        </div>
+      </div>
+    </article>`;
+  }
+
+  function bindCard(p) {
+    const card = document.querySelector(`.card[data-id="${p.id}"]`);
+    const platform = currentTab(p);
+    const e = edit(p, platform);
+    const body = card.querySelector('[data-body]');
+    const tags = card.querySelector('[data-tags]');
+    const counter = card.querySelector('.counter');
+    const spec = state.platforms[platform] || { max_chars: 9999 };
+    const refresh = () => {
+      e.body = body.value; e.hashtags = tags.value.split(/\s+/).filter(Boolean); e.dirty = true;
+      const len = fullLen(e.body, e.hashtags);
+      counter.textContent = `${len} / ${spec.max_chars}` + (spec.max_words ? ` · ${e.body.trim().split(/\s+/).filter(Boolean).length} words (max ${spec.max_words})` : '');
+      counter.classList.toggle('over', len > spec.max_chars);
+      card.querySelector('[data-dirty]').hidden = false;
+    };
+    body.oninput = refresh; tags.oninput = refresh;
+    card.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab[p.id] = b.dataset.tab; renderPosts(); });
+    card.querySelectorAll('[data-hook]').forEach((b) => b.onclick = () => {
+      const lines = body.value.split('\n'); lines[0] = b.dataset.hook; body.value = lines.join('\n'); refresh();
+    });
+    card.querySelector('[data-date]').onchange = async (ev) => {
+      try { await api(`/api/posts/${p.id}`, { method: 'PATCH', body: JSON.stringify({ suggested_post_date: ev.target.value }) }); toast('Date updated'); await loadPosts(); }
+      catch (err) { toast('Error: ' + err.message, 4000); }
+    };
+    card.querySelector('[data-alt]').onchange = async (ev) => {
+      try { await api(`/api/posts/${p.id}`, { method: 'PATCH', body: JSON.stringify({ image_alt_text: ev.target.value }) }); toast('Alt text saved'); }
+      catch (err) { toast('Error: ' + err.message, 4000); }
+    };
+    card.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => act(p, b.dataset.act));
+  }
+
+  async function saveEdits(p) {
+    for (const v of p.variants) {
+      const e = state.edits[p.id + ':' + v.platform];
+      if (e && e.dirty) {
+        await api(`/api/posts/${p.id}/variants/${v.platform}`, { method: 'PUT', body: JSON.stringify({ body: e.body, hashtags: e.hashtags }) });
+        e.dirty = false;
+      }
+    }
+  }
+
+  async function act(p, action) {
+    try {
+      if (action === 'save') { await saveEdits(p); toast('Saved'); }
+      else {
+        await saveEdits(p);
+        const status = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'draft';
+        await api(`/api/posts/${p.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+        toast(`Post ${status}`);
+      }
+      Object.keys(state.edits).filter((k) => k.startsWith(p.id + ':')).forEach((k) => delete state.edits[k]);
+      await Promise.all([loadPosts(), loadStatus(), loadArticles()]);
+    } catch (err) { toast('Error: ' + err.message, 5000); }
+  }
+
+  // ------------------------------------------------------------------ jobs
+  async function startJob(path, body) {
+    try {
+      const job = await api(path, { method: 'POST', body: JSON.stringify(body || {}) });
+      watchJob(job.id);
+    } catch (err) { toast('Error: ' + err.message, 5000); }
+  }
+  function watchJob(id) {
+    state.jobId = id;
+    clearInterval(state.pollTimer);
+    const poll = async () => {
+      const job = await api('/api/jobs/' + id);
+      $('jobState').textContent = `${job.kind}: ${job.status}`;
+      const log = $('jobLog'); log.hidden = false;
+      log.textContent = (job.log || []).slice(-40).join('\n') + (job.error ? '\n' + job.error : '') +
+        (job.status === 'succeeded' && job.result ? '\n' + JSON.stringify(job.result, (k, v) => (k === 'post_ids' ? undefined : v), 1).slice(0, 1500) : '');
+      log.scrollTop = log.scrollHeight;
+      if (!['queued', 'running'].includes(job.status)) {
+        clearInterval(state.pollTimer);
+        toast(`${job.kind} ${job.status}`);
+        await Promise.all([loadStatus(), loadArticles(), loadPosts()]);
+      }
+    };
+    poll();
+    state.pollTimer = setInterval(poll, 2000);
+  }
+
+  $('btnScan').onclick = () => startJob('/api/library/scan');
+  $('btnScore').onclick = () => startJob('/api/library/score');
+  $('btnTag').onclick = () => {
+    const limit = Number($('tagLimit').value) || 40;
+    if (!confirm(`Tag up to ${limit} untagged photos with the vision model? This makes API calls.`)) return;
+    startJob('/api/library/tag', { month: Number($('tagMonth').value) || null, limit });
+  };
+  $('btnRunPanel').onclick = () => { $('runPanel').hidden = !$('runPanel').hidden; };
+  $('btnRun').onclick = () => {
+    const url = $('runUrl').value.trim(), text = $('runText').value.trim();
+    if (!url && !text) { toast('Give a URL or paste the article text'); return; }
+    const platforms = [...document.querySelectorAll('input[name=pf]:checked')].map((i) => i.value);
+    startJob('/api/runs', {
+      url: url || null, text: url ? null : text, month: Number($('runMonth').value) || null,
+      max_posts: Number($('runMax').value) || null, platforms: platforms.length ? platforms : null, dry_run: $('runDry').checked,
+    });
+  };
+  $('btnExport').onclick = async () => {
+    try {
+      const data = await api('/api/export?status=approved' + (state.article ? '&article=' + state.article : ''));
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = `approved-posts-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+      toast(`Exported ${data.count} approved post(s)`);
+    } catch (err) { toast('Error: ' + err.message, 5000); }
+  };
+  $('btnReload').onclick = () => { state.edits = {}; loadPosts(); loadStatus(); loadArticles(); };
+  $('articleFilter').onchange = (ev) => { state.article = ev.target.value; loadPosts(); };
+
+  (async () => {
+    try {
+      state.platforms = await api('/api/platforms');
+      await Promise.all([loadStatus(), loadArticles(), loadPosts()]);
+    } catch (err) { $('posts').innerHTML = `<div class="empty">Could not reach the API: ${esc(err.message)}</div>`; }
+  })();
+})();
+</script>
+</body>
+</html>

@@ -177,7 +177,7 @@ def cmd_posts(args: argparse.Namespace, settings: Settings) -> int:
             print(json.dumps(posts, indent=2, ensure_ascii=False))
             return 0
         for p in posts:
-            print(f"{p['suggested_post_date']}  {p['status']:<9} {p['id']}  chunk {p['chunk_index']} ({p['kind']})  {p['image_path']}")
+            print(f"{p['suggested_post_date']}  {p['status']:<9} {p['id']}  chunk {p['chunk']['index']} ({p['chunk']['kind']})  {p['image']['path']}")
             for v in p["variants"]:
                 first = v["body"].splitlines()[0] if v["body"] else ""
                 print(f"    {v['platform']:<9} {v['char_count']:>5} chars  {first[:80]}")
@@ -188,6 +188,15 @@ def cmd_set_status(args: argparse.Namespace, settings: Settings) -> int:
     with Storage(settings.db_path) as st:
         st.set_post_status(args.post_id, args.status)
     print(f"{args.post_id} -> {args.status}")
+    return 0
+
+
+def cmd_serve(args: argparse.Namespace, settings: Settings) -> int:
+    from .api import serve
+
+    print(f"Review UI:  http://{args.host}:{args.port}/")
+    print(f"API docs:   http://{args.host}:{args.port}/api/docs")
+    serve(settings, host=args.host, port=args.port)
     return 0
 
 
@@ -245,6 +254,11 @@ def build_parser() -> argparse.ArgumentParser:
     l.add_argument("--status", choices=["draft", "approved", "scheduled", "published", "rejected"])
     l.add_argument("--json", action="store_true")
     l.set_defaults(func=cmd_posts)
+
+    sv = sub.add_parser("serve", help="start the local API + review UI")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8765)
+    sv.set_defaults(func=cmd_serve)
 
     ss = sub.add_parser("set-status", help="update a post's workflow status")
     ss.add_argument("post_id")
