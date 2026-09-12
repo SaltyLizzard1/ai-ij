@@ -43,6 +43,7 @@ swapped: a different chunker, a different tagger, a different LLM provider, a di
 | `chunker.py` | Boilerplate stripping, heading-aware packing into 150–700 char chunks, list and quote chunks, "hook" sentences with context, `post_score` ranking | `ChunkingError` when nothing usable |
 | `keywords.py` | RAKE-style keywords; lexicon mapping to the shared `THEMES` / `MOODS` vocabularies | Pure functions, never raise |
 | `library/scanner.py` | Walk `YYYY-MM` folders, join `blur2.csv` by `month/filename`, read dimensions when no record | `ImageIndexError` if the drive is not mounted |
+| `library/quality.py` | Score new photos with the same columns as `blur2.csv` (perceptual blur, Laplacian variance, p99, contrast) and append them | Per-photo failures reported; CSV backed up before append |
 | `library/tagger.py` | Downscale to 1024 px JPEG, Claude vision call with a JSON-schema-constrained response, candidate selection (sharp + right month first) | Per-photo errors are logged and skipped; retry on rate limits |
 | `library/matcher.py` | Weighted scoring, in-run de-duplication, fallback to the sharpest untagged photo | `NoImageMatchError` only when the library is empty |
 | `llm/` | `anthropic_provider.py`, `openai_provider.py`, `mock_provider.py` behind one `complete_json()` interface | Typed SDK errors mapped to retryable / non-retryable |
@@ -50,7 +51,7 @@ swapped: a different chunker, a different tagger, a different LLM provider, a di
 | `scheduler.py` | Posting window from the image's month, even spread across weekdays, per-platform hour in your timezone | `ValueError` on a bad timezone |
 | `storage.py` + `schema.sql` | SQLite repository; idempotent upserts | `StorageError` |
 | `pipeline.py` | Orchestrates a run; one chunk failing never stops the others | Run status `succeeded` / `partial` / `failed` |
-| `cli.py` | `init-db`, `status`, `scan`, `tag`, `run`, `posts`, `set-status` | Exit code 0 / 2 (partial) / 1 |
+| `cli.py` | `init-db`, `status`, `scan`, `score`, `tag`, `run`, `posts`, `set-status` | Exit code 0 / 2 (partial) / 1 |
 
 ### How matching works with unlabelled photos
 
@@ -103,6 +104,24 @@ social-pipeline posts                         # what has been generated, by date
 social-pipeline set-status <post_id> approved
 social-pipeline status
 ```
+
+### Scoring photos that arrived after your last blur run
+
+`blur2.csv` only knows the photos that existed when your organiser scored them. Anything newer has no
+row, so the pipeline can't filter it on sharpness. The `score` command fills the gap with the same
+columns (`blur` is the Crete-Roffet perceptual metric, verified against scikit-image's `blur_effect`
+to within 0.3%, so the 0.42 cut-off still applies):
+
+```powershell
+social-pipeline score --dry-run          # list photos with no quality record
+social-pipeline score                    # score them, append to blur2.csv (backup: blur2.csv.bak), re-scan
+social-pipeline score --months 2026-09   # just one month
+social-pipeline score --verify 10        # re-score 10 already-scored photos and compare with the CSV
+```
+
+**The "button"**: `scripts\Score-NewPhotos.cmd` does `score` + `status` and waits for a keypress.
+Double-click it, or pin a shortcut to it. To make it automatic, add a second action to your existing
+*Camera Roll Month Filer* scheduled task that runs the `.cmd` after `Sort-CameraRoll.ps1`.
 
 `run` will scan the library automatically if the image table is empty, and tags up to `TAG_MAX_PER_RUN`
 new photos before matching. Use `--no-auto-tag` to only use photos already tagged.
@@ -230,6 +249,6 @@ picking dates. Things Claude should not be the tool for, with what to use instea
 python -m pytest -q
 ```
 
-31 tests cover chunking (HTML and Markdown), keyword/theme extraction, quality-record joins,
+37 tests cover chunking, quality scoring (HTML and Markdown), keyword/theme extraction, quality-record joins,
 candidate selection, matching, caption validation and auto-fix, retries, scheduling, storage, and the
 full pipeline with mock providers. No network access is needed.
