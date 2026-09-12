@@ -7,6 +7,7 @@ stay in the environment.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,7 +43,9 @@ def load_dotenv(path: str | os.PathLike[str] = ".env", *, override: bool = False
         key = key.strip()
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
+            value = value[1:-1]  # quoted: keep everything inside, including '#'
+        else:
+            value = re.split(r"\s+#", value, maxsplit=1)[0].rstrip()  # drop an inline comment
         if override or key not in os.environ:
             os.environ[key] = value
 
