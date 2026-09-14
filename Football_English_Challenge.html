@@ -43,7 +43,8 @@ h1{margin:0;font-size:clamp(30px,5vw,46px)}
 .ball{
   position:absolute;left:4%;top:55px;font-size:36px;transition:left .45s ease;
 }
-.ball.goal{animation:goalPop .6s ease .45s 1}
+.ball.scored{animation:goalPop .6s ease .45s 1}
+.ball.snap{transition:none}
 @keyframes goalPop{0%{transform:scale(1)}50%{transform:scale(1.4)}100%{transform:scale(1)}}
 .card{border:2px solid #e5e7eb;border-radius:20px;padding:23px;text-align:center}
 .level{font-weight:900;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);font-size:14px}
@@ -172,7 +173,7 @@ $("nextBtn").addEventListener("click",next);
 function start(){
   clearTimeout(goalTimer);clearTimeout(retryTimer);
   i=0;score=0;streak=0;goals=0;progress=0;misses=0;locked=false;
-  $("ball").classList.remove("goal");
+  $("ball").classList.remove("scored","snap");
   $("start").hidden=true;$("end").hidden=true;$("play").hidden=false;
   updateStats();render();
 }
@@ -237,14 +238,17 @@ function scoreGoal(){
     goals++;
     updateStats();                 // refresh pills first
     const ball=$("ball");
-    ball.style.left="92%";         // roll into the goal box
-    ball.classList.add("goal");
+    ball.style.left="calc(100% - 40px)"; // roll into the net, whatever the pitch width
+    ball.classList.add("scored");
     $("feedback").textContent="GOAL! ⚽ Fantastic English!";
     goalTimer=setTimeout(()=>{
       try{
         progress=0;
-        ball.classList.remove("goal");
+        ball.classList.remove("scored");
+        ball.classList.add("snap"); // jump back to kick-off instantly, no rolling backwards
         updateStats();             // ball back to 4%
+        void ball.offsetWidth;     // force the un-animated jump to apply
+        ball.classList.remove("snap");
         $("nextBtn").hidden=false;
       }catch(err){
         console.error("Football English Challenge: goal reset failed",err);
