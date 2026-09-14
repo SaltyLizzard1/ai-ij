@@ -76,6 +76,7 @@ h1{margin:0;font-size:clamp(30px,5vw,46px)}
   font-size:17px;line-height:1.55;text-align:left
 }
 .start,.end{text-align:center}.big{font-size:64px;font-weight:900;margin:12px}.stars{font-size:44px}
+#fireworks{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50}
 .badge{display:inline-block;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:7px 12px;font-weight:900;margin:4px}
 @media(max-width:650px){.choices{grid-template-columns:1fr}.game{padding:15px}.card{padding:17px}.pitch{height:125px}.ball{top:44px}}
 </style>
@@ -134,6 +135,7 @@ h1{margin:0;font-size:clamp(30px,5vw,46px)}
   <button id="againBtn" class="action">Play Again</button>
 </section>
 </main>
+<canvas id="fireworks" hidden></canvas>
 
 <script>
 const CHOICES=["am","is","are","was","were"];
@@ -148,6 +150,12 @@ const qs=[
 {level:TODAY,when:"today",scene:"🧑‍🏫😊",q:"The coach ___ happy.",a:"is",th:"โค้ชมีความสุข (ตอนนี้)",c:CHOICES},
 {level:TODAY,when:"today",scene:"👨‍⚖️😠",q:"The referee ___ angry.",a:"is",th:"กรรมการโกรธ (ตอนนี้)",c:CHOICES},
 {level:TODAY,when:"today",scene:"🙋🏟️",q:"I ___ at the stadium.",a:"am",th:"ฉันอยู่ที่สนามฟุตบอล (ตอนนี้)",c:CHOICES},
+{level:TODAY,when:"today",scene:"👕👕🔴",q:"The shirts ___ red.",a:"are",th:"เสื้อสีแดง (ตอนนี้)",c:CHOICES},
+{level:TODAY,when:"today",scene:"🏟️🌧️",q:"The pitch ___ wet.",a:"is",th:"สนามเปียก (ตอนนี้)",c:CHOICES},
+{level:TODAY,when:"today",scene:"👏📣",q:"The fans ___ loud.",a:"are",th:"แฟนบอลเสียงดัง (ตอนนี้)",c:CHOICES},
+{level:TODAY,when:"today",scene:"🏟️🎉",q:"The match ___ exciting.",a:"is",th:"การแข่งขันน่าตื่นเต้น (ตอนนี้)",c:CHOICES},
+{level:TODAY,when:"today",scene:"👟👟🟫",q:"The boots ___ dirty.",a:"are",th:"รองเท้าสกปรก (ตอนนี้)",c:CHOICES},
+{level:TODAY,when:"today",scene:"🙋🎽",q:"I ___ the captain.",a:"am",th:"ฉันเป็นกัปตันทีม (ตอนนี้)",c:CHOICES},
 
 {level:YESTERDAY,when:"yesterday",scene:"🧤🥅",q:"Yesterday, the goalkeeper ___ ready.",a:"was",th:"เมื่อวาน ผู้รักษาประตูพร้อม",c:CHOICES},
 {level:YESTERDAY,when:"yesterday",scene:"🏃⚽",q:"Yesterday, the striker ___ fast.",a:"was",th:"เมื่อวาน กองหน้าเร็ว",c:CHOICES},
@@ -155,7 +163,12 @@ const qs=[
 {level:YESTERDAY,when:"yesterday",scene:"👦👦😴",q:"Yesterday, the players ___ tired.",a:"were",th:"เมื่อวาน นักฟุตบอลเหนื่อย",c:CHOICES},
 {level:YESTERDAY,when:"yesterday",scene:"🧑‍🏫😊",q:"Yesterday, the coach ___ happy.",a:"was",th:"เมื่อวาน โค้ชมีความสุข",c:CHOICES},
 {level:YESTERDAY,when:"yesterday",scene:"👨‍⚖️😠",q:"Yesterday, the referee ___ angry.",a:"was",th:"เมื่อวาน กรรมการโกรธ",c:CHOICES},
-{level:YESTERDAY,when:"yesterday",scene:"🙋🏟️",q:"Yesterday, I ___ at the stadium.",a:"was",th:"เมื่อวาน ฉันอยู่ที่สนามฟุตบอล",c:CHOICES}
+{level:YESTERDAY,when:"yesterday",scene:"🙋🏟️",q:"Yesterday, I ___ at the stadium.",a:"was",th:"เมื่อวาน ฉันอยู่ที่สนามฟุตบอล",c:CHOICES},
+{level:YESTERDAY,when:"yesterday",scene:"👕👕🔴",q:"Yesterday, the shirts ___ red.",a:"were",th:"เมื่อวาน เสื้อสีแดง",c:CHOICES},
+{level:YESTERDAY,when:"yesterday",scene:"🏟️🌧️",q:"Yesterday, the pitch ___ wet.",a:"was",th:"เมื่อวาน สนามเปียก",c:CHOICES},
+{level:YESTERDAY,when:"yesterday",scene:"👏📣",q:"Yesterday, the fans ___ loud.",a:"were",th:"เมื่อวาน แฟนบอลเสียงดัง",c:CHOICES},
+{level:YESTERDAY,when:"yesterday",scene:"🏟️🎉",q:"Yesterday, the match ___ exciting.",a:"was",th:"เมื่อวาน การแข่งขันน่าตื่นเต้น",c:CHOICES},
+{level:YESTERDAY,when:"yesterday",scene:"👟👟🟫",q:"Yesterday, the boots ___ dirty.",a:"were",th:"เมื่อวาน รองเท้าสกปรก",c:CHOICES}
 ];
 
 const GOAL_AT=6;       // correct answers in a row needed for a goal
@@ -171,7 +184,7 @@ $("againBtn").addEventListener("click",start);
 $("nextBtn").addEventListener("click",next);
 
 function start(){
-  clearTimeout(goalTimer);clearTimeout(retryTimer);
+  clearTimeout(goalTimer);clearTimeout(retryTimer);stopFireworks();
   i=0;score=0;streak=0;goals=0;progress=0;misses=0;locked=false;
   $("ball").classList.remove("scored","snap");
   $("start").hidden=true;$("end").hidden=true;$("play").hidden=false;
@@ -269,6 +282,62 @@ function finish(){
   else{stars="⭐";msg="Good effort! Play again and try to make fewer saves."}
   $("stars").textContent=stars;
   $("finalText").textContent=`${goals} goals, ${misses} wrong ${misses===1?"tap":"taps"}. ${msg}`;
+  if(misses<=1)startFireworks(9000);        // 3 stars: full show
+  else if(misses<=4)startFireworks(3500);   // 2 stars: short show
+}
+
+/* ---------- Fireworks (Full Time celebration) ---------- */
+const fx={ctx:null,raf:null,parts:[],until:0,nextLaunch:0};
+function startFireworks(ms){
+  try{
+    stopFireworks();
+    const c=$("fireworks");
+    c.width=window.innerWidth;c.height=window.innerHeight;c.hidden=false;
+    fx.ctx=c.getContext("2d");
+    if(!fx.ctx)throw new Error("2D canvas context unavailable");
+    fx.parts=[];fx.until=performance.now()+ms;fx.nextLaunch=0;
+    fx.raf=requestAnimationFrame(fxFrame);
+  }catch(err){
+    console.error("Football English Challenge: fireworks failed to start",err);
+    stopFireworks();
+  }
+}
+function stopFireworks(){
+  if(fx.raf)cancelAnimationFrame(fx.raf);
+  fx.raf=null;fx.parts=[];
+  const c=$("fireworks");
+  if(fx.ctx)fx.ctx.clearRect(0,0,c.width,c.height);
+  c.hidden=true;
+}
+function burst(x,y){
+  const hue=Math.random()*360;
+  for(let k=0;k<80;k++){
+    const a=Math.random()*Math.PI*2,sp=1.5+Math.random()*4.5;
+    fx.parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:70+Math.random()*30,max:100,hue:hue+Math.random()*40-20});
+  }
+}
+function fxFrame(t){
+  try{
+    const c=$("fireworks"),ctx=fx.ctx,w=c.width,h=c.height;
+    if(t<fx.until&&t>=fx.nextLaunch){
+      burst(w*(0.1+Math.random()*0.8),h*(0.12+Math.random()*0.4));
+      fx.nextLaunch=t+300+Math.random()*350;
+    }
+    ctx.globalCompositeOperation="destination-out";
+    ctx.fillStyle="rgba(0,0,0,.18)";ctx.fillRect(0,0,w,h);   // fade trails
+    ctx.globalCompositeOperation="lighter";
+    fx.parts=fx.parts.filter(p=>p.life>0);
+    for(const p of fx.parts){
+      p.vx*=0.985;p.vy=p.vy*0.985+0.06;p.x+=p.vx;p.y+=p.vy;p.life--;
+      ctx.fillStyle=`hsla(${p.hue},100%,62%,${p.life/p.max})`;
+      ctx.beginPath();ctx.arc(p.x,p.y,2.6,0,Math.PI*2);ctx.fill();
+    }
+    if(t<fx.until||fx.parts.length)fx.raf=requestAnimationFrame(fxFrame);
+    else stopFireworks();
+  }catch(err){
+    console.error("Football English Challenge: fireworks frame failed",err);
+    stopFireworks();
+  }
 }
 </script>
 </body>
