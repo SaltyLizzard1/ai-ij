@@ -76,7 +76,7 @@ h1{margin:0;font-size:clamp(30px,5vw,46px)}
   font-size:17px;line-height:1.55;text-align:left
 }
 .start,.end{text-align:center}.big{font-size:64px;font-weight:900;margin:12px}.stars{font-size:44px}
-#fireworks{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50}
+#fireworks{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;background:rgba(15,23,42,.45)}
 .badge{display:inline-block;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:7px 12px;font-weight:900;margin:4px}
 @media(max-width:650px){.choices{grid-template-columns:1fr}.game{padding:15px}.card{padding:17px}.pitch{height:125px}.ball{top:44px}}
 </style>
@@ -282,8 +282,9 @@ function finish(){
   else{stars="⭐";msg="Good effort! Play again and try to make fewer saves."}
   $("stars").textContent=stars;
   $("finalText").textContent=`${goals} goals, ${misses} wrong ${misses===1?"tap":"taps"}. ${msg}`;
-  if(misses<=1)startFireworks(9000);        // 3 stars: full show
-  else if(misses<=4)startFireworks(3500);   // 2 stars: short show
+  if(misses<=1)startFireworks(10000);       // 3 stars: full show
+  else if(misses<=4)startFireworks(5000);   // 2 stars: medium show
+  else startFireworks(2500);                // 1 star: still finished the match, short show
 }
 
 /* ---------- Fireworks (Full Time celebration) ---------- */
@@ -311,29 +312,32 @@ function stopFireworks(){
 }
 function burst(x,y){
   const hue=Math.random()*360;
-  for(let k=0;k<80;k++){
-    const a=Math.random()*Math.PI*2,sp=1.5+Math.random()*4.5;
-    fx.parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:70+Math.random()*30,max:100,hue:hue+Math.random()*40-20});
+  for(let k=0;k<110;k++){
+    const a=Math.random()*Math.PI*2,sp=2+Math.random()*5.5;
+    fx.parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:80+Math.random()*40,max:120,hue:hue+Math.random()*40-20,r:2.5+Math.random()*2.5});
   }
 }
 function fxFrame(t){
   try{
     const c=$("fireworks"),ctx=fx.ctx,w=c.width,h=c.height;
     if(t<fx.until&&t>=fx.nextLaunch){
-      burst(w*(0.1+Math.random()*0.8),h*(0.12+Math.random()*0.4));
-      fx.nextLaunch=t+300+Math.random()*350;
+      burst(w*(0.1+Math.random()*0.8),h*(0.1+Math.random()*0.5));
+      fx.nextLaunch=t+220+Math.random()*280;
     }
     ctx.globalCompositeOperation="destination-out";
-    ctx.fillStyle="rgba(0,0,0,.18)";ctx.fillRect(0,0,w,h);   // fade trails
+    ctx.fillStyle="rgba(0,0,0,.14)";ctx.fillRect(0,0,w,h);   // fade trails
     ctx.globalCompositeOperation="lighter";
     fx.parts=fx.parts.filter(p=>p.life>0);
     for(const p of fx.parts){
       p.vx*=0.985;p.vy=p.vy*0.985+0.06;p.x+=p.vx;p.y+=p.vy;p.life--;
-      ctx.fillStyle=`hsla(${p.hue},100%,62%,${p.life/p.max})`;
-      ctx.beginPath();ctx.arc(p.x,p.y,2.6,0,Math.PI*2);ctx.fill();
+      const a=p.life/p.max;
+      ctx.fillStyle=`hsla(${p.hue},100%,65%,${a*0.35})`;          // soft halo
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.2,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=`hsla(${p.hue},100%,70%,${a})`;               // bright core
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
     }
-    if(t<fx.until||fx.parts.length)fx.raf=requestAnimationFrame(fxFrame);
-    else stopFireworks();
+    const done=t>fx.until+3000||(t>=fx.until&&!fx.parts.length); // hard cap so the show always ends
+    if(done)stopFireworks();else fx.raf=requestAnimationFrame(fxFrame);
   }catch(err){
     console.error("Football English Challenge: fireworks frame failed",err);
     stopFireworks();
