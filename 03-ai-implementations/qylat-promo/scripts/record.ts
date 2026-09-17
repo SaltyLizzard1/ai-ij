@@ -24,8 +24,12 @@ const NARRATION_DIR = path.join(ROOT, 'public', 'narration');
 const OUT_DIR = path.join(ROOT, 'out');
 const HEADLESS = process.env.HEADED !== '1';
 // Capture above 1x so the zoomed shots stay sharp. A phone viewport needs 3x
-// to fill 1080 px of width; the desktop viewport needs 2x.
-const SCALE = Number(process.env.RECORD_SCALE ?? (tour.format === 'portrait' ? 3 : 2));
+// to fill 1080 px of width; the desktop viewport needs 2x. That makes the
+// live browser window look huge on screen, so watch mode (HEADED=1) records
+// at 1x unless RECORD_SCALE says otherwise.
+const SCALE = Number(
+  process.env.RECORD_SCALE ?? (!HEADLESS ? 1 : tour.format === 'portrait' ? 3 : 2),
+);
 const PORTRAIT = tour.format === 'portrait';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -225,6 +229,11 @@ async function main() {
 
   const base = new URL(tour.baseUrl);
   console.log(`Recording ${base.origin} as ${tour.format} at ${tour.viewport.width}x${tour.viewport.height} (${SCALE}x)`);
+  if (!HEADLESS) {
+    console.log('Watch mode: the browser window on screen is the capture, not the final video.');
+    console.log('The video is what `npm run render` writes to out/qylat-promo.mp4.');
+    if (SCALE === 1) console.log('Recording at 1x for a normal-sized window. Run without HEADED for the sharp version.');
+  }
 
   // Playwright only ever scales a recording down, so a 2x capture has to come
   // from Chromium itself rendering at 2x. The context's deviceScaleFactor

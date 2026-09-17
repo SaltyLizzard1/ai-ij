@@ -89,7 +89,7 @@ everything.
 |---------------------|-------------------------------------------------------------|
 | `FORMAT`            | `portrait` (default) or `landscape`                          |
 | `BASE_URL`          | record a different origin, e.g. `http://localhost:3000`     |
-| `HEADED=1`          | watch the browser while it records                          |
+| `HEADED=1`          | watch the browser while it records (records at 1x)          |
 | `SUBMIT_QUIZ=1`     | actually submit the Discover Your Idea form (slow)          |
 | `RECORD_SCALE`      | capture scale, default 3 portrait / 2 landscape, 1 is faster|
 | `PW_CHROMIUM`       | path to a Chromium binary if Playwright cannot download one |
