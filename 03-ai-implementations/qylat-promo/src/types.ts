@@ -32,11 +32,21 @@ export interface Scene {
 
 /** portrait = 1080x1920 (Reels, TikTok, Shorts), landscape = 1920x1080 (YouTube, web). */
 export type Format = 'portrait' | 'landscape';
+/** full = the whole storyboard, about 1:45. short = under a minute for social. */
+export type Cut = 'full' | 'short';
+
+export const CUTS: Cut[] = ['full', 'short'];
+export const FORMATS: Format[] = ['portrait', 'landscape'];
+/** Folder under public/tour and composition id for a variant, e.g. "short-portrait". */
+export const variantId = (cut: Cut, format: Format) => `${cut}-${format}`;
 
 export interface Tour {
   baseUrl: string;
+  cut: Cut;
   format: Format;
   viewport: { width: number; height: number };
+  /** Speed of the recorder's own motions (cursor travel, scroll settle, click hold). 1 = normal, 0.7 = brisk. */
+  pace: number;
   /** Title card at the start. The recorder also holds this long so the page can load behind it. */
   introMs: number;
   /** Closing card at the end. The recorder holds the last page for this long. */
@@ -64,6 +74,7 @@ export interface Timeline {
   music?: string;
   /** Host shown in the fake address bar */
   host: string;
+  cut: Cut;
   format: Format;
   viewport: { width: number; height: number };
   /** Wall-clock milliseconds from page creation to context close. */

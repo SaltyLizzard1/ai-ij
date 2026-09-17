@@ -1,34 +1,41 @@
 import React from 'react';
 import { Composition, staticFile } from 'remotion';
 import { PromoVideo, type PromoProps } from './PromoVideo';
-import type { Timeline } from './types';
+import { CUTS, FORMATS, variantId, type Cut, type Format, type Timeline } from './types';
 import { FRAME_SIZE } from './camera';
 
 export const FPS = 60;
 
-export const RemotionRoot: React.FC = () => {
+const Variant: React.FC<{ cut: Cut; format: Format }> = ({ cut, format }) => {
+  const id = variantId(cut, format);
+  const size = FRAME_SIZE[format];
   return (
     <Composition
-      id="QylatPromo"
+      id={id}
       component={PromoVideo}
       fps={FPS}
-      width={1080}
-      height={1920}
+      width={size.w}
+      height={size.h}
       durationInFrames={FPS * 5}
       defaultProps={{ timeline: null, videoDurationMs: 0 }}
       calculateMetadata={async () => {
-        const res = await fetch(staticFile('tour/timeline.json'));
+        const res = await fetch(staticFile(`tour/${id}/timeline.json`));
         if (!res.ok) return { props: { timeline: null, videoDurationMs: 0 } };
         const timeline = (await res.json()) as Timeline;
         const videoDurationMs = timeline.durationMs;
-        const size = FRAME_SIZE[timeline.format ?? 'landscape'];
         return {
           durationInFrames: Math.max(1, Math.floor((videoDurationMs / 1000) * FPS)),
-          width: size.w,
-          height: size.h,
           props: { timeline, videoDurationMs },
         };
       }}
     />
+  );
+};
+
+export const RemotionRoot: React.FC = () => {
+  return (
+    <>
+      {CUTS.map((cut) => FORMATS.map((format) => <Variant key={variantId(cut, format)} cut={cut} format={format} />))}
+    </>
   );
 };

@@ -5,9 +5,16 @@
   "description": "Automated walkthrough video of quityourlifeandtravel.com: Playwright drives the site and records it, Remotion adds the camera zooms, captions and narration.",
   "scripts": {
     "record": "tsx scripts/record.ts",
+    "record:short": "tsx scripts/record.ts --short",
+    "record:wide": "tsx scripts/record.ts --landscape",
+    "record:short:wide": "tsx scripts/record.ts --short --landscape",
     "studio": "remotion studio",
-    "render": "remotion render QylatPromo out/qylat-promo.mp4",
+    "render": "remotion render full-portrait out/qylat-full-portrait.mp4",
+    "render:short": "remotion render short-portrait out/qylat-short-portrait.mp4",
+    "render:wide": "remotion render full-landscape out/qylat-full-landscape.mp4",
+    "render:short:wide": "remotion render short-landscape out/qylat-short-landscape.mp4",
     "video": "npm run record && npm run render",
+    "video:short": "npm run record:short && npm run render:short",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

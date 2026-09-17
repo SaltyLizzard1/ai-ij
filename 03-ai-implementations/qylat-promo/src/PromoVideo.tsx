@@ -56,7 +56,7 @@ export const PromoVideo: React.FC<PromoProps> = ({ timeline, videoDurationMs }) 
   if (!timeline || !model) {
     return (
       <AbsoluteFill style={{ background: BACKDROP, color: '#FBF6E3', justifyContent: 'center', alignItems: 'center', fontSize: 40 }}>
-        No recording yet. Run `npm run record` first.
+        No recording for this variant yet. Run the matching record script first.
       </AbsoluteFill>
     );
   }

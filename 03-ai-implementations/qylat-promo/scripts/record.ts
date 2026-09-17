@@ -2,24 +2,33 @@
  * Drives the website with Playwright, records the screen, and writes a
  * timeline of everything the camera and captions need.
  *
- *   npm run record                       # records the live site
+ *   npm run record                       # full cut, portrait, live site
+ *   npm run record:short                 # short cut (under a minute), portrait
+ *   npm run record:wide                  # full cut, landscape
+ *   npm run record:short:wide            # short cut, landscape
  *   BASE_URL=http://localhost:3000 npm run record   # records a local dev server
  *
- * Output:
- *   public/tour/recording.mp4   (or .webm if no ffmpeg is available)
- *   public/tour/timeline.json   camera moves, captions, url changes
- *   out/narration-script.txt    the narration lines, one per scene, for a TTS pass
+ * Output, per variant:
+ *   public/tour/<cut>-<format>/recording.mp4   (or .webm if no ffmpeg is available)
+ *   public/tour/<cut>-<format>/timeline.json   camera moves, captions, url changes
+ *   out/narration-script-<cut>.txt            the narration lines for a TTS pass
  */
 import { chromium, type Locator, type Page } from 'playwright';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tour } from '../tour';
-import type { Box, Step, Timeline, TimelineEvent } from '../src/types';
+import { buildTour } from '../tour';
+import { variantId, type Box, type Cut, type Format, type Step, type Timeline, type TimelineEvent } from '../src/types';
+
+const argv = process.argv.slice(2);
+const CUT: Cut = argv.includes('--short') || process.env.CUT === 'short' ? 'short' : 'full';
+const FORMAT: Format = argv.includes('--landscape') || process.env.FORMAT === 'landscape' ? 'landscape' : 'portrait';
+const tour = buildTour(CUT, FORMAT);
+const VARIANT = variantId(CUT, FORMAT);
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TOUR_DIR = path.join(ROOT, 'public', 'tour');
+const TOUR_DIR = path.join(ROOT, 'public', 'tour', VARIANT);
 const NARRATION_DIR = path.join(ROOT, 'public', 'narration');
 const OUT_DIR = path.join(ROOT, 'out');
 const HEADLESS = process.env.HEADED !== '1';
@@ -33,6 +42,8 @@ const SCALE = Number(
 const PORTRAIT = tour.format === 'portrait';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Recorder motions scaled by the tour's pace. Explicit `wait` values are not scaled. */
+const paced = (ms: number) => Math.round(ms * tour.pace);
 
 // A visible cursor. Screen recordings do not include the pointer, so this
 // draws one that follows the mouse events Playwright dispatches, plus a
@@ -110,7 +121,7 @@ class Recorder {
       window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
       return true;
     });
-    if (moved) await sleep(900);
+    if (moved) await sleep(paced(900));
   }
 
   async box(loc: Locator): Promise<Box> {
@@ -120,7 +131,7 @@ class Recorder {
   }
 
   /** Eased cursor motion so it reads as a hand, not a teleport. */
-  async moveTo(x: number, y: number, ms = 480) {
+  async moveTo(x: number, y: number, ms = paced(480)) {
     const from = { ...this.cursor };
     const steps = Math.max(8, Math.round(ms / 16));
     for (let i = 1; i <= steps; i++) {
@@ -188,13 +199,13 @@ class Recorder {
         const b = await this.box(loc);
         await this.moveTo(b.x + b.w / 2, b.y + b.h / 2);
         if (step.zoom !== false) this.zoom(b, step.zoom);
-        await sleep(160);
+        await sleep(paced(160));
         await this.page.mouse.down();
         await sleep(90);
         await this.page.mouse.up();
         if (step.action === 'type') {
-          await sleep(250);
-          await this.page.keyboard.type(step.text, { delay: 95 });
+          await sleep(paced(250));
+          await this.page.keyboard.type(step.text, { delay: paced(95) });
         }
         await sleep(wait);
         return;
@@ -228,7 +239,7 @@ async function main() {
   for (const f of fs.readdirSync(TOUR_DIR)) fs.rmSync(path.join(TOUR_DIR, f));
 
   const base = new URL(tour.baseUrl);
-  console.log(`Recording ${base.origin} as ${tour.format} at ${tour.viewport.width}x${tour.viewport.height} (${SCALE}x)`);
+  console.log(`Recording ${base.origin}: ${VARIANT} at ${tour.viewport.width}x${tour.viewport.height} (${SCALE}x)`);
   if (!HEADLESS) {
     console.log('Watch mode: the browser window on screen is the capture, not the final video.');
     console.log('Keep that window visible and uncovered until it closes, or the footage goes grey.');
@@ -344,7 +355,8 @@ async function main() {
   const music = fs.existsSync(path.join(ROOT, 'public', 'music.mp3')) ? 'music.mp3' : undefined;
 
   const timeline: Timeline = {
-    video: `tour/${videoFile}`,
+    video: `tour/${VARIANT}/${videoFile}`,
+    cut: tour.cut,
     music,
     host: base.host,
     format: tour.format,
@@ -365,11 +377,12 @@ async function main() {
     .filter((s) => s.narration)
     .map((s) => `[${s.id}]\n${s.narration}\n`)
     .join('\n');
-  fs.writeFileSync(path.join(OUT_DIR, 'narration-script.txt'), script);
+  fs.writeFileSync(path.join(OUT_DIR, `narration-script-${tour.cut}.txt`), script);
 
   console.log(`\nDone. ${rec.events.length} events, ${(wallMs / 1000).toFixed(1)}s of footage.`);
-  console.log(`  public/tour/${videoFile}\n  public/tour/timeline.json\n  out/narration-script.txt`);
-  console.log('\nNext: npm run studio   (preview)   or   npm run render   (mp4)');
+  console.log(`  public/tour/${VARIANT}/${videoFile}\n  public/tour/${VARIANT}/timeline.json\n  out/narration-script-${tour.cut}.txt`);
+  const renderScript = `render${CUT === 'short' ? ':short' : ''}${FORMAT === 'landscape' ? ':wide' : ''}`;
+  console.log(`\nNext: npm run studio   (preview, pick "${VARIANT}")   or   npm run ${renderScript}   (mp4)`);
 }
 
 main().catch((err) => {

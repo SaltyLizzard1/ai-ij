@@ -6,6 +6,11 @@ records the screen. Remotion then wraps that footage in a phone or browser
 frame, adds light camera moves onto whatever was clicked, and layers the
 captions, hook card and call to action on top.
 
+Two cuts from one storyboard:
+
+- **full**: about 1:45, every tool shown being used. For YouTube and the site.
+- **short**: under a minute, one beat per tool. For Reels, TikTok and Shorts.
+
 Two output formats:
 
 - **portrait** (default): 1080x1920 for Reels, TikTok and Shorts. Records the
@@ -29,20 +34,27 @@ npx playwright install chromium
 ## Make the video
 
 ```bash
-npm run record      # drives the live site, writes public/tour/recording.mp4 + timeline.json
-npm run studio      # optional: scrub the result in the Remotion Studio
-npm run render      # writes out/qylat-promo.mp4 (60 fps, size follows the format)
+npm run record             # full cut, portrait  -> public/tour/full-portrait/
+npm run record:short       # short cut, portrait -> public/tour/short-portrait/
+npm run record:wide        # full cut, landscape
+npm run record:short:wide  # short cut, landscape
+
+npm run studio             # scrub any recorded variant in the Remotion Studio
+
+npm run render             # out/qylat-full-portrait.mp4
+npm run render:short       # out/qylat-short-portrait.mp4
+npm run render:wide        # out/qylat-full-landscape.mp4
+npm run render:short:wide  # out/qylat-short-landscape.mp4
 ```
 
-`npm run video` runs record and render back to back. For the widescreen
-version set `FORMAT=landscape` before recording; the render picks the size
-up from the recording.
+`npm run video` and `npm run video:short` run record and render back to
+back. Each variant keeps its own recording, so you can hold all four and
+re-render any of them.
 
 Environment variables on Windows PowerShell are set on their own line first:
 
 ```powershell
 $env:HEADED=1
-$env:FORMAT="landscape"
 npm run record
 ```
 
@@ -74,8 +86,8 @@ Selectors are Playwright selectors. `text="Leap Calculator"` matches by text,
 
 ## Narration and music
 
-Each scene has a `narration` line. The recorder writes them all to
-`out/narration-script.txt`. Record or generate the voiceover however you
+Each scene has a `narration` line, one version per cut. The recorder writes
+them to `out/narration-script-full.txt` or `out/narration-script-short.txt`. Record or generate the voiceover however you
 like, then drop one file per scene at `public/narration/<scene id>.mp3`
 (for example `public/narration/calculator.mp3`). The next `npm run record`
 picks them up and Remotion plays each one at its scene's start.
@@ -87,6 +99,7 @@ everything.
 
 | variable            | effect                                                      |
 |---------------------|-------------------------------------------------------------|
+| `CUT`               | `full` (default) or `short`, same as the script suffixes    |
 | `FORMAT`            | `portrait` (default) or `landscape`                          |
 | `BASE_URL`          | record a different origin, e.g. `http://localhost:3000`     |
 | `HEADED=1`          | watch the browser while it records (records at 1x)          |
@@ -96,15 +109,15 @@ everything.
 | `BROWSER_EXECUTABLE`| headless Chrome for Remotion if it cannot download one      |
 
 If captions or zooms land a touch early or late against the footage, set
-`syncOffsetMs` in `public/tour/timeline.json` (positive delays them) and
+`syncOffsetMs` in that variant's `timeline.json` (positive delays them) and
 re-render. Re-recording resets it to 0.
 
 ## Layout
 
 ```
-tour.ts               the storyboard: scenes, text, narration, browser steps
+tour.ts               the storyboard: scenes, text, narration, browser steps, both cuts
 scripts/record.ts     Playwright recorder: cursor overlay, smooth scrolling, timeline
-src/Root.tsx          registers the composition, sizes it to the recording
+src/Root.tsx          one composition per variant, sized to its recording
 src/PromoVideo.tsx    browser window + camera + captions + narration + cards
 src/camera.ts         layout per format, zoom maths: element box -> camera target, spring between targets
 src/BrowserWindow.tsx phone or macOS-style frame with a live address bar
