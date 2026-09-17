@@ -1,0 +1,26 @@
+{
+  "name": "qylat-promo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automated walkthrough video of quityourlifeandtravel.com: Playwright drives the site and records it, Remotion adds the camera zooms, captions and narration.",
+  "scripts": {
+    "record": "tsx scripts/record.ts",
+    "studio": "remotion studio",
+    "render": "remotion render QylatPromo out/qylat-promo.mp4",
+    "video": "npm run record && npm run render",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.525",
+    "@remotion/fonts": "^4.0.525",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remotion": "4.0.525"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "playwright": "^1.56.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
