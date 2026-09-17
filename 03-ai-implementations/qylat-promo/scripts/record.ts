@@ -231,6 +231,7 @@ async function main() {
   console.log(`Recording ${base.origin} as ${tour.format} at ${tour.viewport.width}x${tour.viewport.height} (${SCALE}x)`);
   if (!HEADLESS) {
     console.log('Watch mode: the browser window on screen is the capture, not the final video.');
+    console.log('Keep that window visible and uncovered until it closes, or the footage goes grey.');
     console.log('The video is what `npm run render` writes to out/qylat-promo.mp4.');
     if (SCALE === 1) console.log('Recording at 1x for a normal-sized window. Run without HEADED for the sharp version.');
   }
@@ -241,7 +242,15 @@ async function main() {
   const browser = await chromium.launch({
     headless: HEADLESS,
     executablePath: process.env.PW_CHROMIUM || undefined,
-    args: [`--force-device-scale-factor=${SCALE}`],
+    args: [
+      `--force-device-scale-factor=${SCALE}`,
+      // Chromium stops painting a tab it believes is hidden (window covered,
+      // minimised, or off screen), and the recording turns grey for that
+      // stretch. Keep rendering regardless.
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--disable-background-timer-throttling',
+    ],
   });
   const context = await browser.newContext({
     viewport: tour.viewport,
