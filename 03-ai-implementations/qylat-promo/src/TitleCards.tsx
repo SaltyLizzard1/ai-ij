@@ -13,6 +13,11 @@ const Rule: React.FC = () => (
   />
 );
 
+const useScale = () => {
+  const { width, height } = useVideoConfig();
+  return height > width ? 0.68 : 1;
+};
+
 const GoldText: React.FC<{ size: number; children: React.ReactNode }> = ({ size, children }) => (
   <div
     style={{
@@ -35,7 +40,7 @@ const Card: React.FC<{ solid: number; veil: number; children: React.ReactNode }>
   <>
     {/* Solid brand backdrop while the page loads, then a veil over the site. */}
     <AbsoluteFill style={{ background: BACKDROP, opacity: solid }} />
-    <AbsoluteFill style={{ background: 'rgba(45,26,0,0.62)', opacity: veil }} />
+    <AbsoluteFill style={{ background: 'rgba(45,26,0,0.9)', opacity: veil }} />
     <AbsoluteFill
       style={{
         opacity: Math.max(solid, veil),
@@ -52,16 +57,18 @@ const Card: React.FC<{ solid: number; veil: number; children: React.ReactNode }>
   </>
 );
 
-/** Hook card. Solid for the first second (the page is still loading behind it), then a veil, then gone. */
+/** Hook card. Solid while the page loads behind it, then fades out to reveal the site. */
 export const IntroCard: React.FC<{ durationInFrames: number }> = ({ durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rise = spring({ frame, fps, config: { damping: 20, stiffness: 60 } });
-  const solid = interpolate(frame, [fps * 1.2, fps * 2.0], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
-  const veil = interpolate(frame, [fps * 1.2, fps * 2.0, durationInFrames - 20, durationInFrames], [0, 1, 1, 0], {
+  const k = useScale();
+  const solid = interpolate(frame, [durationInFrames - 30, durationInFrames], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
+  const veil = 0;
+  void fps;
   return (
     <Card solid={solid} veil={veil}>
       <div style={{ transform: `translateY(${(1 - rise) * 30}px)`, opacity: rise }}>
@@ -69,8 +76,8 @@ export const IntroCard: React.FC<{ durationInFrames: number }> = ({ durationInFr
           quityourlifeandtravel.com
         </div>
         <Rule />
-        <GoldText size={132}>Quit Your Life &amp; Travel</GoldText>
-        <div style={{ fontFamily: HEADING_FONT, fontWeight: 700, fontSize: 68, color: CREAM, marginTop: 10 }}>
+        <GoldText size={132 * k}>Quit Your Life &amp; Travel</GoldText>
+        <div style={{ fontFamily: HEADING_FONT, fontWeight: 700, fontSize: 68 * k, color: CREAM, marginTop: 10 }}>
           Your Thailand Escape Plan
         </div>
       </div>
@@ -78,22 +85,23 @@ export const IntroCard: React.FC<{ durationInFrames: number }> = ({ durationInFr
   );
 };
 
-/** Call to action over the homepage. Never fully solid, so the site stays visible behind it. */
+/** Call to action over the homepage. A heavy veil so the text reads, with the site faintly behind. */
 export const OutroCard: React.FC<{ durationInFrames: number }> = ({ durationInFrames }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const veil = interpolate(frame, [0, 24], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const rise = spring({ frame: frame - 8, fps, config: { damping: 20, stiffness: 60 } });
+  const k = useScale();
   const pulse = 1 + 0.02 * Math.sin((frame / fps) * Math.PI * 1.5);
   void durationInFrames;
   return (
     <Card solid={0} veil={veil}>
       <div style={{ transform: `translateY(${(1 - rise) * 30}px)`, opacity: rise }}>
-        <div style={{ fontFamily: HEADING_FONT, fontWeight: 700, fontSize: 56, color: CREAM, opacity: 0.9 }}>
+        <div style={{ fontFamily: HEADING_FONT, fontWeight: 700, fontSize: 56 * k, color: CREAM, opacity: 0.9, padding: '0 40px' }}>
           Stop waiting for the perfect moment.
         </div>
         <Rule />
-        <GoldText size={92}>Visit quityourlifeandtravel.com</GoldText>
+        <GoldText size={92 * k}>Visit quityourlifeandtravel.com</GoldText>
         <div
           style={{
             display: 'inline-block',
@@ -104,7 +112,7 @@ export const OutroCard: React.FC<{ durationInFrames: number }> = ({ durationInFr
             color: '#2D1A00',
             fontFamily: BODY_FONT,
             fontWeight: 700,
-            fontSize: 34,
+            fontSize: 34 * k,
             letterSpacing: 0.5,
             border: '1.5px solid #2D1A00',
             boxShadow: '0 16px 40px rgba(0,0,0,0.4)',

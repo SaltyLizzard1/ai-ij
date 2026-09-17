@@ -2,9 +2,17 @@
 
 An automated walkthrough of quityourlifeandtravel.com. Playwright drives the
 site (clicks the nav, answers quiz questions, types into the calculator) and
-records the screen. Remotion then wraps that footage in a browser window,
-adds Screen-Studio style camera zooms onto whatever was clicked, and layers
-the captions, title card and call to action on top.
+records the screen. Remotion then wraps that footage in a phone or browser
+frame, adds light camera moves onto whatever was clicked, and layers the
+captions, hook card and call to action on top.
+
+Two output formats:
+
+- **portrait** (default): 1080x1920 for Reels, TikTok and Shorts. Records the
+  site's phone layout at a phone viewport, so the page fills the frame and
+  most screens need no zoom at all.
+- **landscape**: 1920x1080 for YouTube or the website. Records the desktop
+  layout inside a browser window with gentle zooms so text stays readable.
 
 Nothing is timed by hand. The recorder measures every element it touches and
 writes the camera moves and caption cues to `public/tour/timeline.json`.
@@ -23,10 +31,20 @@ npx playwright install chromium
 ```bash
 npm run record      # drives the live site, writes public/tour/recording.mp4 + timeline.json
 npm run studio      # optional: scrub the result in the Remotion Studio
-npm run render      # writes out/qylat-promo.mp4 (1920x1080, 60 fps)
+npm run render      # writes out/qylat-promo.mp4 (60 fps, size follows the format)
 ```
 
-`npm run video` runs record and render back to back.
+`npm run video` runs record and render back to back. For the widescreen
+version set `FORMAT=landscape` before recording; the render picks the size
+up from the recording.
+
+Environment variables on Windows PowerShell are set on their own line first:
+
+```powershell
+$env:HEADED=1
+$env:FORMAT="landscape"
+npm run record
+```
 
 ## Edit the tour
 
@@ -44,9 +62,12 @@ Step actions:
 | `zoomOut`  | return to the full browser window                                     |
 | `wait`     | hold for `ms`                                                         |
 
-`zoom` on click/type/scrollTo steps takes a number (camera scale, 1.15 to
+`zoom` on click/type/scrollTo steps takes a number (camera scale, 1.1 to
 2.4), `false` to skip the zoom, or nothing to let the camera pick a level
-that fits the element.
+that fits the element (capped at 1.35 in portrait, 1.6 in landscape). The
+levels used by the storyboard live in the `Z` table at the top of `tour.ts`,
+one value per purpose (nav, heading, field, detail) and per format, so the
+whole video can be made calmer or punchier by editing four numbers.
 
 Selectors are Playwright selectors. `text="Leap Calculator"` matches by text,
 `button:has-text("Next")` by contained text, and `#idea-to-plan h2` by CSS.
@@ -66,10 +87,11 @@ everything.
 
 | variable            | effect                                                      |
 |---------------------|-------------------------------------------------------------|
+| `FORMAT`            | `portrait` (default) or `landscape`                          |
 | `BASE_URL`          | record a different origin, e.g. `http://localhost:3000`     |
 | `HEADED=1`          | watch the browser while it records                          |
 | `SUBMIT_QUIZ=1`     | actually submit the Discover Your Idea form (slow)          |
-| `RECORD_SCALE`      | capture scale, default 2 (sharp zooms), 1 is faster         |
+| `RECORD_SCALE`      | capture scale, default 3 portrait / 2 landscape, 1 is faster|
 | `PW_CHROMIUM`       | path to a Chromium binary if Playwright cannot download one |
 | `BROWSER_EXECUTABLE`| headless Chrome for Remotion if it cannot download one      |
 
@@ -84,8 +106,8 @@ tour.ts               the storyboard: scenes, text, narration, browser steps
 scripts/record.ts     Playwright recorder: cursor overlay, smooth scrolling, timeline
 src/Root.tsx          registers the composition, sizes it to the recording
 src/PromoVideo.tsx    browser window + camera + captions + narration + cards
-src/camera.ts         zoom maths: element box -> camera target, spring between targets
-src/BrowserWindow.tsx macOS-style frame with a live address bar
+src/camera.ts         layout per format, zoom maths: element box -> camera target, spring between targets
+src/BrowserWindow.tsx phone or macOS-style frame with a live address bar
 src/Caption.tsx       lower-third caption per scene
 src/TitleCards.tsx    hook card and call-to-action overlay
 src/theme.ts          brand colours and fonts, copied from the site

@@ -23,17 +23,25 @@ const TOUR_DIR = path.join(ROOT, 'public', 'tour');
 const NARRATION_DIR = path.join(ROOT, 'public', 'narration');
 const OUT_DIR = path.join(ROOT, 'out');
 const HEADLESS = process.env.HEADED !== '1';
-// Capture at 2x so the zoomed shots stay sharp in a 1080p frame.
-const SCALE = Number(process.env.RECORD_SCALE ?? 2);
+// Capture above 1x so the zoomed shots stay sharp. A phone viewport needs 3x
+// to fill 1080 px of width; the desktop viewport needs 2x.
+const SCALE = Number(process.env.RECORD_SCALE ?? (tour.format === 'portrait' ? 3 : 2));
+const PORTRAIT = tour.format === 'portrait';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // A visible cursor. Screen recordings do not include the pointer, so this
 // draws one that follows the mouse events Playwright dispatches, plus a
 // gold ripple on click. Injected before any page script runs.
+const ARROW_SVG =
+  '<svg viewBox="0 0 26 34" width="26" height="34"><path d="M3 2 L3 26 L9.5 20.5 L13.5 30 L18 28 L14 18.5 L22 18.5 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+const DOT_SVG =
+  '<svg viewBox="0 0 26 34" width="26" height="34"><circle cx="13" cy="13" r="11" fill="rgba(232,200,74,0.55)" stroke="rgba(139,105,20,0.9)" stroke-width="2"/></svg>';
+
 const CURSOR_SCRIPT = `(() => {
   if (window.__tourCursor) return;
   window.__tourCursor = true;
+  const PORTRAIT = ${PORTRAIT};
   const install = () => {
     const style = document.createElement('style');
     style.textContent = 'nextjs-portal{display:none!important}@keyframes __tourRipple{from{transform:translate(-50%,-50%) scale(.2);opacity:.9}to{transform:translate(-50%,-50%) scale(1);opacity:0}}';
@@ -41,12 +49,19 @@ const CURSOR_SCRIPT = `(() => {
     const c = document.createElement('div');
     c.id = '__tour_cursor';
     c.style.cssText = 'position:fixed;left:-100px;top:-100px;width:26px;height:34px;pointer-events:none;z-index:2147483647;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));opacity:0;transition:opacity .25s';
-    c.innerHTML = '<svg viewBox="0 0 26 34" width="26" height="34"><path d="M3 2 L3 26 L9.5 20.5 L13.5 30 L18 28 L14 18.5 L22 18.5 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+    c.innerHTML = PORTRAIT ? '${DOT_SVG}' : '${ARROW_SVG}';
     document.documentElement.appendChild(c);
+    // On the phone layout the dot stands in for a fingertip, so it hides
+    // when nothing is happening. The desktop arrow stays put like a real one.
+    let idle = null;
     document.addEventListener('mousemove', (e) => {
-      c.style.left = (e.clientX - 3) + 'px';
-      c.style.top = (e.clientY - 2) + 'px';
+      c.style.left = (e.clientX - (PORTRAIT ? 13 : 3)) + 'px';
+      c.style.top = (e.clientY - (PORTRAIT ? 13 : 2)) + 'px';
       c.style.opacity = '1';
+      if (PORTRAIT) {
+        if (idle) clearTimeout(idle);
+        idle = setTimeout(() => { c.style.opacity = '0'; }, 900);
+      }
     }, true);
     document.addEventListener('mousedown', (e) => {
       const r = document.createElement('div');
@@ -209,7 +224,7 @@ async function main() {
   for (const f of fs.readdirSync(TOUR_DIR)) fs.rmSync(path.join(TOUR_DIR, f));
 
   const base = new URL(tour.baseUrl);
-  console.log(`Recording ${base.origin} at ${tour.viewport.width}x${tour.viewport.height} (${SCALE}x)`);
+  console.log(`Recording ${base.origin} as ${tour.format} at ${tour.viewport.width}x${tour.viewport.height} (${SCALE}x)`);
 
   // Playwright only ever scales a recording down, so a 2x capture has to come
   // from Chromium itself rendering at 2x. The context's deviceScaleFactor
@@ -314,6 +329,7 @@ async function main() {
     video: `tour/${videoFile}`,
     music,
     host: base.host,
+    format: tour.format,
     viewport: tour.viewport,
     wallMs,
     // Falls back to wall-clock time when ffmpeg is missing; captions may then

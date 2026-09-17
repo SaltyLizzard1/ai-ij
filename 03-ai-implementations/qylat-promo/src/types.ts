@@ -30,8 +30,12 @@ export interface Scene {
   steps: Step[];
 }
 
+/** portrait = 1080x1920 (Reels, TikTok, Shorts), landscape = 1920x1080 (YouTube, web). */
+export type Format = 'portrait' | 'landscape';
+
 export interface Tour {
   baseUrl: string;
+  format: Format;
   viewport: { width: number; height: number };
   /** Title card at the start. The recorder also holds this long so the page can load behind it. */
   introMs: number;
@@ -60,6 +64,7 @@ export interface Timeline {
   music?: string;
   /** Host shown in the fake address bar */
   host: string;
+  format: Format;
   viewport: { width: number; height: number };
   /** Wall-clock milliseconds from page creation to context close. */
   wallMs: number;

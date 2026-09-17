@@ -4,7 +4,7 @@ import { loadFont } from '@remotion/fonts';
 import { BrowserWindow } from './BrowserWindow';
 import { Caption } from './Caption';
 import { IntroCard, OutroCard } from './TitleCards';
-import { cameraAtFrame, cameraForBox, type CameraKey } from './camera';
+import { cameraAtFrame, cameraForBox, makeLayout, type CameraKey } from './camera';
 import { BACKDROP } from './theme';
 import type { Timeline } from './types';
 
@@ -29,13 +29,14 @@ export const PromoVideo: React.FC<PromoProps> = ({ timeline, videoDurationMs }) 
     // recorded in wall-clock time shifts earlier by that lag.
     const lag = videoDurationMs > 0 ? Math.max(0, timeline.wallMs - videoDurationMs) : 0;
     const toFrame = (t: number) => Math.round(((t - lag + timeline.syncOffsetMs) / 1000) * fps);
+    const layout = makeLayout(timeline.format ?? 'landscape', timeline.viewport);
 
     const cameraKeys: CameraKey[] = [];
     const urls: { frame: number; path: string }[] = [];
     const scenes: { frame: number; id: string; eyebrow: string; title: string; subtitle?: string }[] = [];
     for (const e of timeline.events) {
       const f = Math.max(0, toFrame(e.t));
-      if (e.type === 'zoom') cameraKeys.push({ frame: f, target: cameraForBox(e.box, timeline.viewport, e.level) });
+      if (e.type === 'zoom') cameraKeys.push({ frame: f, target: cameraForBox(e.box, timeline.viewport, e.level, layout) });
       else if (e.type === 'zoomOut') cameraKeys.push({ frame: f, target: { scale: 1, tx: 0, ty: 0 } });
       else if (e.type === 'url') urls.push({ frame: f, path: e.path });
       else if (e.type === 'scene')
@@ -49,7 +50,7 @@ export const PromoVideo: React.FC<PromoProps> = ({ timeline, videoDurationMs }) 
       const end = i + 1 < scenes.length ? scenes[i + 1].frame : outroStart + 12;
       return { ...s, start, duration: Math.max(1, end - start) };
     });
-    return { cameraKeys, urls, captions, introFrames, outroFrames, outroStart };
+    return { layout, cameraKeys, urls, captions, introFrames, outroFrames, outroStart };
   }, [timeline, videoDurationMs, fps, durationInFrames]);
 
   if (!timeline || !model) {
@@ -72,7 +73,7 @@ export const PromoVideo: React.FC<PromoProps> = ({ timeline, videoDurationMs }) 
           transformOrigin: '50% 50%',
         }}
       >
-        <BrowserWindow url={url}>
+        <BrowserWindow url={url} layout={model.layout}>
           <OffthreadVideo
             src={staticFile(timeline.video)}
             muted

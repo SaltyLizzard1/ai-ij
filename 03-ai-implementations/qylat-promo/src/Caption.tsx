@@ -9,7 +9,9 @@ export const Caption: React.FC<{
   durationInFrames: number;
 }> = ({ title, subtitle, eyebrow, durationInFrames }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
+  const portrait = height > width;
+  const k = portrait ? 0.78 : 1;
   const enter = spring({ frame, fps, config: { damping: 18, stiffness: 90 } });
   const exit = interpolate(frame, [durationInFrames - 14, durationInFrames - 2], [1, 0], {
     extrapolateLeft: 'clamp',
@@ -22,9 +24,10 @@ export const Caption: React.FC<{
     <div
       style={{
         position: 'absolute',
-        left: 72,
-        bottom: 64,
-        maxWidth: 1100,
+        left: portrait ? 48 : 72,
+        right: portrait ? 48 : undefined,
+        bottom: portrait ? 96 : 64,
+        maxWidth: portrait ? undefined : 1100,
         opacity,
         transform: `translateY(${y}px)`,
         padding: '22px 34px 24px',
@@ -38,7 +41,7 @@ export const Caption: React.FC<{
       <div
         style={{
           fontFamily: BODY_FONT,
-          fontSize: 17,
+          fontSize: 17 * k,
           letterSpacing: 3,
           textTransform: 'uppercase',
           color: GOLD,
@@ -51,7 +54,7 @@ export const Caption: React.FC<{
         style={{
           fontFamily: HEADING_FONT,
           fontWeight: 700,
-          fontSize: 62,
+          fontSize: 62 * k,
           lineHeight: 1.05,
           background: GOLD_GRADIENT,
           WebkitBackgroundClip: 'text',
@@ -63,7 +66,7 @@ export const Caption: React.FC<{
         {title}
       </div>
       {subtitle ? (
-        <div style={{ fontFamily: BODY_FONT, fontSize: 27, color: CREAM, opacity: 0.92, marginTop: 6, lineHeight: 1.3 }}>
+        <div style={{ fontFamily: BODY_FONT, fontSize: 27 * k, color: CREAM, opacity: 0.92, marginTop: 6, lineHeight: 1.3 }}>
           {subtitle}
         </div>
       ) : null}

@@ -1,13 +1,66 @@
 import { spring } from 'remotion';
-import type { Box } from './types';
+import type { Box, Format } from './types';
 
-// Frame and browser window geometry, all in output pixels.
-export const FRAME = { w: 1920, h: 1080 };
-export const HEADER_H = 60;
-export const CONTENT = { w: 1440, h: 900 };
-export const WINDOW = { w: CONTENT.w, h: CONTENT.h + HEADER_H };
-export const WINDOW_POS = { x: (FRAME.w - WINDOW.w) / 2, y: (FRAME.h - WINDOW.h) / 2 };
-export const CONTENT_POS = { x: WINDOW_POS.x, y: WINDOW_POS.y + HEADER_H };
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Where the browser window and its content sit inside the output frame. */
+export interface Layout {
+  format: Format;
+  frame: { w: number; h: number };
+  headerH: number;
+  window: Rect;
+  content: Rect;
+  radius: number;
+  /** Upper bound for automatic zoom levels. */
+  maxAutoZoom: number;
+}
+
+export const FRAME_SIZE: Record<Format, { w: number; h: number }> = {
+  landscape: { w: 1920, h: 1080 },
+  portrait: { w: 1080, h: 1920 },
+};
+
+export function makeLayout(format: Format, viewport: { width: number; height: number }): Layout {
+  const frame = FRAME_SIZE[format];
+  if (format === 'landscape') {
+    const headerH = 60;
+    const contentW = 1440;
+    const contentH = Math.round((contentW * viewport.height) / viewport.width);
+    const win = { w: contentW, h: contentH + headerH };
+    const x = Math.round((frame.w - win.w) / 2);
+    const y = Math.round((frame.h - win.h) / 2);
+    return {
+      format,
+      frame,
+      headerH,
+      window: { x, y, w: win.w, h: win.h },
+      content: { x, y: y + headerH, w: contentW, h: contentH },
+      radius: 18,
+      maxAutoZoom: 1.6,
+    };
+  }
+  // Portrait: a phone-shaped window with a slim address bar, nearly edge to edge.
+  const margin = 30;
+  const headerH = 84;
+  const contentW = frame.w - margin * 2;
+  const contentH = Math.round((contentW * viewport.height) / viewport.width);
+  const win = { w: contentW, h: contentH + headerH };
+  const y = Math.max(margin, Math.round((frame.h - win.h) / 2));
+  return {
+    format,
+    frame,
+    headerH,
+    window: { x: margin, y, w: win.w, h: win.h },
+    content: { x: margin, y: y + headerH, w: contentW, h: contentH },
+    radius: 44,
+    maxAutoZoom: 1.35,
+  };
+}
 
 export interface Camera {
   scale: number;
@@ -21,41 +74,39 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 /**
  * Camera that centres a page element. `box` is in CSS px of the recorded
- * viewport; `viewport` is that viewport's size, so recordings at other sizes
- * still map onto the 1440x900 content area.
+ * viewport and is mapped onto the layout's content area.
  */
 export function cameraForBox(
   box: Box,
   viewport: { width: number; height: number },
-  level?: number,
+  level: number | undefined,
+  layout: Layout,
 ): Camera {
-  const sx = CONTENT.w / viewport.width;
-  const sy = CONTENT.h / viewport.height;
+  const { frame, content, window: win } = layout;
+  const sx = content.w / viewport.width;
+  const sy = content.h / viewport.height;
   const w = box.w * sx;
   const h = box.h * sy;
-  const cx = CONTENT_POS.x + (box.x + box.w / 2) * sx;
-  const cy = CONTENT_POS.y + (box.y + box.h / 2) * sy;
+  const cx = content.x + (box.x + box.w / 2) * sx;
+  const cy = content.y + (box.y + box.h / 2) * sy;
 
-  // Auto level: fit the element with generous margin, never past 2.4x.
-  const auto = Math.min(FRAME.w / (w * 1.9), FRAME.h / (h * 2.6));
-  const scale = clamp(level ?? auto, 1.15, 2.4);
+  // Auto level: fit the element with generous margin, within the layout's cap.
+  const auto = Math.min(frame.w / (w * 1.9), frame.h / (h * 2.6));
+  const scale = clamp(level ?? auto, 1.1, level === undefined ? layout.maxAutoZoom : 2.4);
 
   // With transform-origin at the frame centre C, a point p lands at
   // C + scale * (p - C) + t. Solve t so the element centre lands on C.
-  const C = { x: FRAME.w / 2, y: FRAME.h / 2 };
+  const C = { x: frame.w / 2, y: frame.h / 2 };
   let tx = -scale * (cx - C.x);
   let ty = -scale * (cy - C.y);
 
   // Keep the browser window covering the frame while zoomed, when it can.
-  const left = WINDOW_POS.x;
-  const right = WINDOW_POS.x + WINDOW.w;
-  const top = WINDOW_POS.y;
-  const bottom = WINDOW_POS.y + WINDOW.h;
-  const txMin = FRAME.w - (C.x + scale * (right - C.x));
-  const txMax = -(C.x + scale * (left - C.x));
-  const tyMin = FRAME.h - (C.y + scale * (bottom - C.y));
-  const tyMax = -(C.y + scale * (top - C.y));
+  const txMin = frame.w - (C.x + scale * (win.x + win.w - C.x));
+  const txMax = -(C.x + scale * (win.x - C.x));
+  const tyMin = frame.h - (C.y + scale * (win.y + win.h - C.y));
+  const tyMax = -(C.y + scale * (win.y - C.y));
   if (txMin <= txMax) tx = clamp(tx, txMin, txMax);
+  else tx = 0;
   if (tyMin <= tyMax) ty = clamp(ty, tyMin, tyMax);
 
   return { scale, tx, ty };
